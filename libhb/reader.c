@@ -43,6 +43,7 @@ struct hb_work_private_s
     hb_bd_t      * bd;
     hb_dvd_t     * dvd;
     hb_stream_t  * stream;
+    hb_joinreader_t * join;   // composite (join) reader; replaces stream
 
     hb_psdemux_t   demux;
     int            scr_changes;
@@ -327,7 +328,14 @@ static int reader_init( hb_work_object_t * w, hb_job_t * job )
     // The stream needs to be open before starting the reader thread
     // to prevent a race with decoders that may share information
     // with the reader. Specifically avcodec needs this.
-    if ( hb_reader_open( r ) )
+    if ( job->join_inputs != NULL && hb_list_count( job->join_inputs ) > 0 )
+    {
+        if ( !( r->join = hb_joinreader_open( job ) ) )
+        {
+            return 1;
+        }
+    }
+    else if ( hb_reader_open( r ) )
     {
         return 1;
     }
@@ -356,6 +364,10 @@ static void reader_close( hb_work_object_t * w )
     else if (r->stream)
     {
         hb_stream_close(&r->stream);
+    }
+    else if (r->join)
+    {
+        hb_joinreader_close(&r->join);
     }
 
     int ii;
@@ -460,20 +472,31 @@ static int reader_work( hb_work_object_t * w, hb_buffer_t ** buf_in,
 
     hb_buffer_list_clear(&list);
 
-    if (r->bd)
+    if (r->join)
+    {
+        if (!hb_joinreader_read(r->join, &list))
+        {
+            hb_log("reader: end of join inputs reached");
+            reader_send_eof(r);
+            return HB_WORK_DONE;
+        }
+        // chapter stays -1: the joinreader marks chapters on the
+        // composite timeline itself.
+    }
+    else if (r->bd)
         chapter = hb_bd_chapter( r->bd );
     else if (r->dvd)
         chapter = hb_dvd_chapter( r->dvd );
     else if (r->stream)
         chapter = hb_stream_chapter( r->stream );
 
-    if( chapter < 0 )
+    if( !r->join && chapter < 0 )
     {
         hb_log( "reader: end of the title reached" );
         reader_send_eof(r);
         return HB_WORK_DONE;
     }
-    if( chapter > r->chapter_end )
+    if( !r->join && chapter > r->chapter_end )
     {
         hb_log("reader: end of chapter %d (media %d) reached at media chapter %d",
                 r->job->chapter_end, r->chapter_end, chapter);
@@ -488,6 +511,12 @@ static int reader_work( hb_work_object_t * w, hb_buffer_t ** buf_in,
             reader_send_eof(r);
             return HB_WORK_DONE;
         }
+    }
+    else if (r->join)
+    {
+        // The join branch above already demuxed into list; nothing to
+        // read here.
+        buf = NULL;
     }
     else if (r->dvd)
     {
@@ -513,7 +542,15 @@ static int reader_work( hb_work_object_t * w, hb_buffer_t ** buf_in,
         return HB_WORK_DONE;
     }
 
-    (hb_demux[r->title->demuxer])(buf, &list, &r->demux);
+    if (r->join)
+    {
+        // The joinreader already demuxed into list.
+        buf = NULL;
+    }
+    else
+    {
+        (hb_demux[r->title->demuxer])(buf, &list, &r->demux);
+    }
 
     while ((buf = hb_buffer_list_rem_head(&list)) != NULL)
     {

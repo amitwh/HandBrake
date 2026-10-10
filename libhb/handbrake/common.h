@@ -1421,6 +1421,9 @@ struct hb_title_s
     /* Composite-title (join) scan results */
     int             join_eligible;              // lossless copy eligibility
     char            join_eligibility_reason[256];
+    hb_list_t     * join_titles;                // per-input titles, inputs
+                                                // 1..N-1 (input 0 == this
+                                                // title); owned by the title
 };
 
 // Update win/CS/HandBrake.Interop/HandBrakeInterop/HbLib/hb_state_s.cs when changing this struct

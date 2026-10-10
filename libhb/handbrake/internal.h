@@ -374,6 +374,11 @@ int           hb_bd_main_feature( hb_bd_t * d, hb_list_t * list_title );
 hb_stream_t * hb_bd_stream_open( hb_handle_t *h, hb_title_t *title );
 void hb_ts_stream_reset(hb_stream_t *stream);
 hb_data_t   * hb_stream_video_extradata( hb_stream_t * stream );
+typedef struct hb_joinreader_s hb_joinreader_t;
+hb_joinreader_t * hb_joinreader_open( hb_job_t * job );
+int               hb_joinreader_read( hb_joinreader_t * j,
+                                      hb_buffer_list_t * list );
+void              hb_joinreader_close( hb_joinreader_t ** j );
 hb_stream_t * hb_stream_open(hb_handle_t *h, const char * path,
                              hb_title_t *title, int scan);
 void		 hb_stream_close( hb_stream_t ** );

@@ -548,7 +548,10 @@ static void JoinScanFunc(void *_data)
         hb_log("scan: join will re-encode (%s)", reason);
     }
 
-    // Publish the composite as the only title of this scan.
+    // Publish the composite as the only title of this scan. The
+    // per-input titles of inputs 1..N-1 ride along on the composite so
+    // the join reader can open each input with its own stream ids and
+    // demuxer; input 0's original title is the composite itself.
     while (hb_list_count(data->title_set->list_title) > 0)
     {
         hb_title_t *title = hb_list_item(data->title_set->list_title, 0);
@@ -557,6 +560,12 @@ static void JoinScanFunc(void *_data)
     }
     hb_list_add(data->title_set->list_title, composite);
     titles[0] = NULL; // ownership moved to the title set
+    composite->join_titles = hb_list_init();
+    for (ii = 1; ii < count; ii++)
+    {
+        hb_list_add(composite->join_titles, titles[ii]);
+        titles[ii] = NULL; // ownership moved to the composite
+    }
     free((char *)data->title_set->path);
     data->title_set->path = strdup(
         ((hb_join_input_t *)hb_list_item(data->join_inputs, 0))->path);

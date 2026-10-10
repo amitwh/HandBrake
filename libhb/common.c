@@ -4770,6 +4770,16 @@ void hb_title_close( hb_title_t ** _t )
     free((char*)t->path);
     free(t->video_codec_name);
     free(t->container_name);
+    if (t->join_titles != NULL)
+    {
+        hb_title_t *join_title;
+        while ((join_title = hb_list_item(t->join_titles, 0)) != NULL)
+        {
+            hb_list_rem(t->join_titles, join_title);
+            hb_title_close(&join_title);
+        }
+        hb_list_close(&t->join_titles);
+    }
 
     free( t );
     *_t = NULL;
