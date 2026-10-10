@@ -26,7 +26,7 @@ FORCEVERSION =
 
 $(BUILDDIR)/GNUmakefile: $(CONFIGURE)
 	dh_testdir
-	unset CFLAGS; unset CPPLAGS; unset CXXLAGS; $(CONFIGURE) --prefix=/usr --enable-vce
+	unset CFLAGS; unset CPPLAGS; unset CXXLAGS; $(CONFIGURE) --prefix=/usr --enable-vce --enable-vaapi
 
 build:  $(BUILDDIR)/GNUmakefile
 	dh_testdir
