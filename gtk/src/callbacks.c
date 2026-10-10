@@ -1301,7 +1301,23 @@ set_widget_ranges (signal_user_data_t *ud, GhbValue *settings)
 
         if (ghb_settings_combo_int(ud->settings, "PtoPType") == 0)
         {
-            GhbValue *chapter_list = ghb_get_job_chapter_list(settings);
+            // The watermark picker stores the raw path; compose the
+        // filter settings string the preset machinery expects
+        const char *watermark_file = ghb_dict_get_string(settings, "PictureWatermarkFile");
+        if (watermark_file != NULL && watermark_file[0] != 0)
+        {
+            char *watermark_settings = g_strdup_printf(
+                "source=%s:position=9:margin=20:scale=100:opacity=80",
+                watermark_file);
+            ghb_dict_set_string(settings, "PictureWatermark", watermark_settings);
+            g_free(watermark_settings);
+        }
+        else
+        {
+            ghb_dict_remove(settings, "PictureWatermark");
+        }
+
+        GhbValue *chapter_list = ghb_get_job_chapter_list(settings);
             gint num_chapters = ghb_array_len(chapter_list);
 
             val = ghb_dict_get_int(ud->settings, "start_point");

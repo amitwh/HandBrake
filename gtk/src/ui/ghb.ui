@@ -3406,6 +3406,79 @@ JunkLeft:JunkRight:JunkTop:JunkBottom:StrictBreaks:MetricPlane:Parity</property>
                             </layout>
                           </object>
                         </child>
+                        <child>
+                          <object class="GtkLabel" id="filters_speed_label">
+                            <property name="halign">end</property>
+                            <property name="label" translatable="yes">Speed:</property>
+                            <layout>
+                              <property name="row">9</property>
+                              <property name="column">0</property>
+                            </layout>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkComboBoxText" id="PictureSpeed">
+                            <property name="tooltip-text" translatable="yes">Playback speed. Audio is pitch-preserved and subtitles are re-timed; requires re-encoding.</property>
+                            <items>
+                              <item id="factor=1.0" translatable="yes">1.0 (off)</item>
+                              <item id="factor=1.25" translatable="yes">1.25×</item>
+                              <item id="factor=1.5" translatable="yes">1.5×</item>
+                              <item id="factor=2.0" translatable="yes">2×</item>
+                              <item id="factor=3.0" translatable="yes">3×</item>
+                              <item id="factor=4.0" translatable="yes">4×</item>
+                              <item id="factor=0.5" translatable="yes">0.5×</item>
+                              <item id="factor=0.25" translatable="yes">0.25×</item>
+                            </items>
+                            <signal name="changed" handler="filter_widget_changed_cb" swapped="no"/>
+                            <layout>
+                              <property name="row">9</property>
+                              <property name="column">1</property>
+                            </layout>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="filters_watermark_label">
+                            <property name="halign">end</property>
+                            <property name="label" translatable="yes">Watermark:</property>
+                            <layout>
+                              <property name="row">10</property>
+                              <property name="column">0</property>
+                            </layout>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GhbFileButton" id="PictureWatermarkFile">
+                            <property name="tooltip-text" translatable="yes">PNG or JPEG image composited over the video (bottom-right corner). Advanced options (position, margin, scale, opacity) are available via the command line (--watermark).</property>
+                            <property name="action">open</property>
+                            <property name="title" translatable="yes">Watermark image</property>
+                            <signal name="notify::file" handler="filter_widget_changed_cb" swapped="no"/>
+                            <layout>
+                              <property name="row">10</property>
+                              <property name="column">1</property>
+                            </layout>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="filters_timestamp_label">
+                            <property name="halign">end</property>
+                            <property name="label" translatable="yes">Burn timestamp:</property>
+                            <layout>
+                              <property name="row">11</property>
+                              <property name="column">0</property>
+                            </layout>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkEntry" id="PictureTimestamp">
+                            <property name="tooltip-text" translatable="yes">FreeType timestamp burn-in. Format tokens: {clock} {pts} {frame} {file}. Full settings string (e.g. "format={clock}:position=7:size=28").</property>
+                            <property name="placeholder-text" translatable="yes">format={clock} {pts}</property>
+                            <signal name="changed" handler="filter_widget_changed_cb" swapped="no"/>
+                            <layout>
+                              <property name="row">11</property>
+                              <property name="column">1</property>
+                            </layout>
+                          </object>
+                        </child>
                       </object>
                     </property>
                   </object>
