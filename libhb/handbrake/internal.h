@@ -446,7 +446,8 @@ enum
     WORK_MUX,
     WORK_READER,
     WORK_DECAVSUB,
-    WORK_ENCAVSUB
+    WORK_ENCAVSUB,
+    WORK_ENCCOPYJOIN
 };
 
 extern hb_filter_object_t hb_filter_detelecine;

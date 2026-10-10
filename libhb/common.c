@@ -92,6 +92,7 @@ enum
     HB_GID_VCODEC_FFV1,
     HB_GID_VCODEC_PRORES,
     HB_GID_VCODEC_DNXHR,
+    HB_GID_VCODEC_COPY_JOIN,
     HB_GID_ACODEC_ALAC,
     HB_GID_ACODEC_ALAC_PASS,
     HB_GID_ACODEC_AAC,
@@ -341,6 +342,7 @@ hb_encoder_internal_t hb_video_encoders[]  =
     { { "ProRes",                      "ff_prores",        "ProRes (libavcodec)",            HB_VCODEC_FFMPEG_PRORES,                      HB_MUX_MASK_MOV|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_PRORES,     },
     { { "ProRes (VideoToolbox)",       "vt_prores",        "ProRes (VideoToolbox)",          HB_VCODEC_VT_PRORES,                          HB_MUX_MASK_MOV|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_PRORES,     },
     { { "Theora",                      "theora",           "Theora (libtheora)",             HB_VCODEC_THEORA,                                             HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_THEORA,     },
+    { { "Source copy (join)",         "join-copy",        "Lossless stream copy (join)",    HB_VCODEC_COPY_JOIN,                          HB_MUX_AV_MOV|HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_COPY_JOIN,  },
 };
 int hb_video_encoders_count = sizeof(hb_video_encoders) / sizeof(hb_video_encoders[0]);
 static int hb_video_encoder_is_enabled(int encoder, int disable_hardware)
@@ -416,6 +418,9 @@ static int hb_video_encoder_is_enabled(int encoder, int disable_hardware)
     // Software Encoders
     switch (encoder)
     {
+        case HB_VCODEC_COPY_JOIN:
+            return 1;
+
         // the following encoders are always enabled
         case HB_VCODEC_THEORA:
         case HB_VCODEC_FFMPEG_MPEG4:

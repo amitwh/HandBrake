@@ -38,6 +38,8 @@ struct hb_joinreader_s
     int64_t             out_base;  // composite timeline base of current range
     int                 chapter;   // next composite chapter number (1-based)
     int                 range_open; // current range has not seen video yet
+    int                 copy_mode; // HB_VCODEC_COPY_JOIN semantics
+    int64_t             last_emit_stop; // last emitted video stop (composite)
 };
 
 static int join_advance( hb_joinreader_t * j )
@@ -118,6 +120,8 @@ hb_joinreader_t * hb_joinreader_open( hb_job_t * job )
     j->cur     = 0;
     j->out_base = 0;
     j->chapter = 1;
+    j->copy_mode = ( job->vcodec == HB_VCODEC_COPY_JOIN );
+    j->last_emit_stop = AV_NOPTS_VALUE;
     j->state   = calloc( count, sizeof( join_input_state_t ) );
 
     for ( int ii = 0; ii < count; ii++ )
@@ -171,9 +175,26 @@ static void join_rewrite_and_filter( hb_joinreader_t * j,
         {
             buf->s.renderOffset += offset;
         }
+        else if ( j->copy_mode )
+        {
+            // Copy mode forwards raw demux timestamps to the muxer;
+            // sources whose leading packets carry no DTS (e.g. mkv)
+            // would trip the muxer's monotonicity check at a seam.
+            // Synthesize a DTS from the composite start.
+            buf->s.renderOffset = buf->s.start;
+        }
 
         if ( buf->s.id == title->video_id )
         {
+            // Copy mode cuts must start on a keyframe: at each range
+            // entry, drop video until the first keyframe at/after the
+            // requested in-point.
+            if ( j->copy_mode && j->range_open &&
+                 !( buf->s.frametype & ( HB_FRAME_IDR | HB_FRAME_I ) ) )
+            {
+                hb_buffer_close( &buf );
+                continue;
+            }
             // The joinreader owns chapter marks on the composite
             // timeline: the first video buffer of each kept range starts
             // a chapter, everything else carries no chapter info
@@ -197,9 +218,23 @@ static void join_rewrite_and_filter( hb_joinreader_t * j,
             {
                 st->last_stop = buf->s.start - offset;
             }
+            if ( buf->s.stop != AV_NOPTS_VALUE )
+            {
+                j->last_emit_stop = buf->s.stop;
+            }
         }
         else
         {
+            // Copy mode: at a seam, the next input's encoder priming
+            // maps below the range's composite base (the previous
+            // range's exact stop); dropping those keeps timestamps
+            // monotonic. Normal interleaved audio always sits at or
+            // after the base and must pass through untouched.
+            if ( j->copy_mode && buf->s.start < j->out_base )
+            {
+                hb_buffer_close( &buf );
+                continue;
+            }
             buf->s.new_chap = 0;
         }
         hb_buffer_list_append( out_list, buf );

@@ -242,6 +242,9 @@ hb_work_object_t* hb_video_encoder(hb_handle_t *h, int vcodec)
 
     switch (vcodec)
     {
+        case HB_VCODEC_COPY_JOIN:
+            w = hb_get_work(h, WORK_ENCCOPYJOIN);
+            break;
         case HB_VCODEC_FFMPEG_MPEG4:
             w = hb_get_work(h, WORK_ENCAVCODEC);
             w->codec_param = AV_CODEC_ID_MPEG4;
@@ -1755,6 +1758,19 @@ static void do_job(hb_job_t *job)
         *job->die = 1;
         goto cleanup;
     }
+    // Lossless join jobs decode nothing, so no video filter applies:
+    // strip the chain before it can mutate the job's geometry and keep
+    // the composite title's parameters.
+    if (job->vcodec == HB_VCODEC_COPY_JOIN && job->join_inputs != NULL)
+    {
+        hb_filter_object_t *filter;
+        while ((filter = hb_list_item(job->list_filter, 0)) != NULL)
+        {
+            hb_list_rem(job->list_filter, filter);
+            hb_filter_close(&filter);
+        }
+    }
+
     // Filters have an effect on settings.
     // So initialize the filters and update the job.
     if (job->list_filter && hb_list_count(job->list_filter))
@@ -1992,6 +2008,25 @@ static void do_job(hb_job_t *job)
         hb_list_add( job->list_work, w );
     }
 
+    if (job->vcodec == HB_VCODEC_COPY_JOIN && job->join_inputs != NULL)
+    {
+        // Lossless join: encoded video packets flow reader -> copy
+        // "encoder" -> muxer. No decoder, no video sync, no filters on
+        // the video leg (audio/subtitles run their normal pipelines).
+        w = hb_video_encoder(job->h, job->vcodec);
+        if (w == NULL)
+        {
+            *job->done_error = HB_ERROR_INIT;
+            *job->die = 1;
+            goto cleanup;
+        }
+        w->fifo_in   = job->fifo_in;
+        w->fifo_out  = job->fifo_out;
+        w->extradata = &job->extradata;
+        hb_list_add(job->list_work, w);
+    }
+    else
+    {
     // Video decoder
     w = hb_video_decoder(job->h, title->video_codec, title->video_codec_param,
                          job->hw_device_ctx, job->hw_accel);
@@ -2008,6 +2043,7 @@ static void do_job(hb_job_t *job)
     // Synchronization
     w = hb_get_work(job->h, WORK_SYNC_VIDEO);
     hb_list_add(job->list_work, w);
+    }
 
     if (!job->indepth_scan)
     {
@@ -2028,7 +2064,18 @@ static void do_job(hb_job_t *job)
                 goto cleanup;
             }
             w->init_delay = &audio->priv.init_delay;
-            w->fifo_in    = audio->priv.fifo_sync;
+            if (job->vcodec == HB_VCODEC_COPY_JOIN)
+            {
+                // Copy jobs run no video sync (and therefore no audio
+                // sync objects): the join reader's composite timeline is
+                // already continuous, so audio flows decoder -> encoder
+                // directly.
+                w->fifo_in    = audio->priv.fifo_raw;
+            }
+            else
+            {
+                w->fifo_in    = audio->priv.fifo_sync;
+            }
             w->fifo_out   = audio->priv.fifo_out;
             w->extradata  = &audio->priv.extradata;
             w->audio      = audio;
@@ -2052,13 +2099,26 @@ static void do_job(hb_job_t *job)
                 *job->die = 1;
                 goto cleanup;
             }
-            w->fifo_in  = subtitle->fifo_sync;
+            if (job->vcodec == HB_VCODEC_COPY_JOIN)
+            {
+                w->fifo_in  = subtitle->fifo_raw;
+            }
+            else
+            {
+                w->fifo_in  = subtitle->fifo_sync;
+            }
             w->fifo_out = subtitle->fifo_out;
             w->subtitle = subtitle;
 
             hb_list_add( job->list_work, w );
         }
 
+        if (job->vcodec == HB_VCODEC_COPY_JOIN)
+        {
+            // Copy jobs run no filter chain and no second video encoder;
+            // the copy encoder was added before the decoders above.
+        }
+        else
         /* Set up the video filter fifo pipeline */
         if ( job->list_filter )
         {
@@ -2081,6 +2141,8 @@ static void do_job(hb_job_t *job)
             job->fifo_render = NULL;
         }
 
+        if (job->vcodec != HB_VCODEC_COPY_JOIN)
+        {
         // Video encoder
         w = hb_video_encoder(job->h, job->vcodec);
         if (w == NULL)
@@ -2103,6 +2165,7 @@ static void do_job(hb_job_t *job)
         w->extradata  = &job->extradata;
 
         hb_list_add( job->list_work, w );
+        }
     }
 
     // Add Muxer work object

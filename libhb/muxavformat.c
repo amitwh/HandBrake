@@ -384,6 +384,45 @@ static int avformatInit( hb_mux_object_t * m )
 
     switch (job->vcodec)
     {
+        case HB_VCODEC_COPY_JOIN:
+        {
+            // Lossless join: the codec is whatever the source stream is.
+            // Eligibility guarantees every input shares it.
+            const char *name = job->title->video_codec_name;
+
+            if (name == NULL)
+            {
+                hb_error("muxavformat: copy join with unknown source codec");
+                goto error;
+            }
+            if (strstr(name, "264") != NULL)
+            {
+                track->st->codecpar->codec_id = AV_CODEC_ID_H264;
+                track->st->codecpar->codec_tag = MKTAG('a','v','c','1');
+            }
+            else if (strstr(name, "265") != NULL ||
+                     strstr(name, "hevc") != NULL)
+            {
+                track->st->codecpar->codec_id = AV_CODEC_ID_HEVC;
+                track->st->codecpar->codec_tag = MKTAG('h','v','c','1');
+            }
+            else if (strstr(name, "mpeg2") != NULL)
+            {
+                track->st->codecpar->codec_id = AV_CODEC_ID_MPEG2VIDEO;
+            }
+            else if (strstr(name, "vp9") != NULL)
+            {
+                track->st->codecpar->codec_id = AV_CODEC_ID_VP9;
+            }
+            else
+            {
+                hb_error("muxavformat: copy join does not support source "
+                         "codec %s", name);
+                goto error;
+            }
+            break;
+        }
+
         case HB_VCODEC_X264_8BIT:
         case HB_VCODEC_X264_10BIT:
         case HB_VCODEC_VT_H264:

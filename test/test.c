@@ -5414,6 +5414,24 @@ PrepareJob(hb_handle_t *h, hb_title_t *title, hb_dict_t *preset_dict)
         }
         hb_dict_set(source_dict, "JoinInputs", join_list);
         hb_dict_set(source_dict, "JoinCopy", hb_value_int(join_copy));
+
+        if ( join_copy != HB_JOIN_COPY_OFF && title->join_eligible )
+        {
+            hb_dict_t *video_dict = hb_dict_get(job_dict, "Video");
+
+            hb_dict_set(video_dict, "Encoder",
+                        hb_value_string("join-copy"));
+            if ( format == NULL )
+            {
+                // Stream copy is safest in MKV for arbitrary inputs.
+                hb_dict_set(dest_dict, "Mux", hb_value_string("av_mkv"));
+            }
+        }
+        else if ( join_copy == HB_JOIN_COPY_AUTO )
+        {
+            fprintf( stderr, "join: falling back to re-encode (%s)\n",
+                     title->join_eligibility_reason );
+        }
     }
 
     if (hb_value_get_bool(hb_dict_get(preset_dict, "MetadataPassthru")) == 0)

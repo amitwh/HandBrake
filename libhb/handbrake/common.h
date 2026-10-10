@@ -758,6 +758,10 @@ struct hb_job_s
 #define HB_VCODEC_FFMPEG_VAAPI_AV1          (0x00000046 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_AV1_MASK)
 #define HB_VCODEC_FFMPEG_VAAPI_AV1_10BIT    (0x00000047 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_AV1_MASK)
 
+// Join lossless passthrough "encoder": forwards the (already rewritten)
+// encoded video packets of a composite job straight to the muxer.
+#define HB_VCODEC_COPY_JOIN                 (0x00000048)
+
 #define HB_VCODEC_VT_H264           (0x00000050 | HB_VCODEC_VT_MASK | HB_VCODEC_H264_MASK)
 #define HB_VCODEC_VT_H265           (0x00000051 | HB_VCODEC_VT_MASK | HB_VCODEC_H265_MASK)
 #define HB_VCODEC_VT_H265_10BIT     (0x00000052 | HB_VCODEC_VT_MASK | HB_VCODEC_H265_MASK)
@@ -1595,6 +1599,7 @@ extern hb_work_object_t hb_muxer;
 extern hb_work_object_t hb_encca_aac;
 extern hb_work_object_t hb_encca_haac;
 extern hb_work_object_t hb_encavcodeca;
+extern hb_work_object_t hb_encjoincopy;
 extern hb_work_object_t hb_reader;
 
 #define HB_FILTER_OK      0
