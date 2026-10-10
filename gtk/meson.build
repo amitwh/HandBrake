@@ -28,6 +28,7 @@ ghb_deps = [
   dependency('dvdnav'),
   dependency('dvdread'),
   dependency('SvtAv1Enc'),
+  dependency('freetype2'),
   dependency('glib-2.0', version: glib_min),
   dependency('gio-2.0', version: glib_min),
   dependency('gthread-2.0', version: glib_min),

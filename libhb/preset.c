@@ -1821,6 +1821,37 @@ int hb_preset_apply_filters(const hb_dict_t *preset, hb_dict_t *job_dict)
         free(watermark);
     }
 
+    // Timestamp burn-in filter
+    {
+        char *stamp = hb_value_get_string_xform(
+                          hb_dict_get(preset, "PictureTimestamp"));
+        if (stamp != NULL)
+        {
+            filter_settings =
+                hb_generate_filter_settings(HB_FILTER_TIMESTAMP, NULL,
+                                            NULL, stamp);
+            if (filter_settings == NULL)
+            {
+                hb_error("Invalid timestamp filter settings (%s)", stamp);
+                free(stamp);
+                return -1;
+            }
+            else if (!hb_dict_get_bool(filter_settings, "disable"))
+            {
+                filter_dict = hb_dict_init();
+                hb_dict_set(filter_dict, "ID",
+                            hb_value_int(HB_FILTER_TIMESTAMP));
+                hb_dict_set(filter_dict, "Settings", filter_settings);
+                hb_add_filter2(filter_list, filter_dict);
+            }
+            else
+            {
+                hb_value_free(&filter_settings);
+            }
+        }
+        free(stamp);
+    }
+
     // Grayscale filter
     if (hb_value_get_bool(hb_dict_get(preset, "VideoGrayScale")))
     {

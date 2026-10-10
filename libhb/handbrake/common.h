@@ -901,6 +901,8 @@ struct hb_job_s
      * is a legacy single-source job. */
     hb_list_t     * join_inputs;
     int             join_copy;      // HB_JOIN_COPY_OFF/_AUTO/_FORCE
+    volatile int   join_current_input; // 0-based; reader updates, filters
+                                       // read (e.g. timestamp {file})
 
     /*
      * Muxer settings
@@ -1720,6 +1722,7 @@ enum
     HB_FILTER_FORMAT,
     HB_FILTER_RPU,
     HB_FILTER_WATERMARK,
+    HB_FILTER_TIMESTAMP,
 
     // Finally filters that don't care what order they are in,
     // except that they must be after the above filters

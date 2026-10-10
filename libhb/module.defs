@@ -51,6 +51,12 @@ LIBHB.out += $(LIBHB.a)
 LIBHB.GCC.D += __LIBHB__
 LIBHB.GCC.I += $(LIBHB.build/) $(CONTRIB.build/)include
 
+# The timestamp burn-in filter uses FreeType directly (the same library
+# libass pulls in); contrib freetype is not built in this tree. The
+# build system adds its own -I/-l prefixes, so pass bare paths.
+LIBHB.GCC.I += $(shell pkg-config --cflags freetype2 2>/dev/null | sed -e 's/-I//g')
+LIBHB.GCC.l += $(shell pkg-config --libs-only-l freetype2 2>/dev/null | sed -e 's/-l//g')
+
 ifeq (1,$(FEATURE.qsv))
     ifeq ($(HOST.system),freebsd)
         LIBHB.GCC.I += $(LOCALBASE)/include/vpl

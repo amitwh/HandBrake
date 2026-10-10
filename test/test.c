@@ -208,6 +208,7 @@ static int      stop_at_frame = 0;
 static char *   join = NULL;              // --join comma-separated paths
 static char *   speed = NULL;             // --speed factor
 static char *   watermark = NULL;         // --watermark settings string
+static char *   stamp = NULL;             // --burn-timestamp settings string
 static int      join_copy = -1;           // --join-copy off|auto|force
 static int    * join_range_index = NULL;  // --range 1-based input indices
 static int64_t *join_range_start = NULL;  // --range start pts
@@ -676,6 +677,7 @@ cleanup:
     free(rotate);
     free(speed);
     free(watermark);
+    free(stamp);
     free(deblock);
     free(deblock_tune);
     free(detelecine);
@@ -1414,6 +1416,10 @@ static void ShowHelp(void)
 "       --watermark <string>\n"
 "                           PNG/JPEG watermark: source=<file>, position=1-9\n"
 "                           or center, margin, scale (5-250%%), opacity\n"
+"       --burn-timestamp <string>\n"
+"                           FreeType timestamp burn-in: format (tokens\n"
+"                           {clock} {pts} {frame} {file}), font, size,\n"
+"                           position, margin, outline, box, base\n"
 "   -c, --chapters <string> Select chapters (e.g. \"1-3\" for chapters\n"
 "                           1 to 3 or \"3\" for chapter 3 only,\n"
 "                           default: all chapters)\n"
@@ -2319,6 +2325,7 @@ static int ParseOptions( int argc, char ** argv )
     #define JOIN_COPY                     339
     #define SPEED                         340
     #define WATERMARK                     341
+    #define BURN_TIMESTAMP                342
 
     for( ;; )
     {
@@ -2352,6 +2359,7 @@ static int ParseOptions( int argc, char ** argv )
             { "join-copy",   required_argument, NULL,      JOIN_COPY },
             { "speed",       required_argument, NULL,          SPEED },
             { "watermark",   required_argument, NULL,      WATERMARK },
+            { "burn-timestamp", required_argument, NULL, BURN_TIMESTAMP },
             { "output",      required_argument, NULL,    'o' },
             { "optimize",    no_argument,       NULL,        'O' },
             { "no-optimize", no_argument,       &optimize, 0 },
@@ -3357,6 +3365,10 @@ static int ParseOptions( int argc, char ** argv )
             case WATERMARK:
                 free( watermark );
                 watermark = strdup( optarg );
+                break;
+            case BURN_TIMESTAMP:
+                free( stamp );
+                stamp = strdup( optarg );
                 break;
             case ALLOWED_AUDIO_COPY:
             {
@@ -5157,6 +5169,10 @@ static hb_dict_t * PreparePreset(const char *preset_name)
     {
         hb_dict_set(preset, "PictureWatermark", hb_value_string(watermark));
     }
+    if (stamp != NULL)
+    {
+        hb_dict_set(preset, "PictureTimestamp", hb_value_string(stamp));
+    }
     if (pad_disable)
     {
         hb_dict_set(preset, "PicturePad", hb_value_string("off"));
@@ -5446,18 +5462,21 @@ PrepareJob(hb_handle_t *h, hb_title_t *title, hb_dict_t *preset_dict)
         hb_dict_set(source_dict, "JoinInputs", join_list);
         hb_dict_set(source_dict, "JoinCopy", hb_value_int(join_copy));
 
-        // Speed changes timestamps, which lossless copy cannot do.
-        if ( speed != NULL && join_copy != HB_JOIN_COPY_OFF )
+        // Speed, watermark and burn-in require re-encoding; lossless
+        // copy forwards the untouched stream.
+        if ( ( speed != NULL || watermark != NULL || stamp != NULL ) &&
+             join_copy != HB_JOIN_COPY_OFF )
         {
             if ( join_copy == HB_JOIN_COPY_FORCE )
             {
-                fprintf( stderr, "Error: --speed cannot be combined with "
-                         "--join-copy force; speed requires re-encoding\n" );
+                fprintf( stderr, "Error: filters that modify the picture "
+                         "(--speed, --watermark, --burn-timestamp) cannot "
+                         "be combined with --join-copy force\n" );
                 hb_value_free(&join_list);
                 return NULL;
             }
-            fprintf( stderr, "join: --speed requires re-encode; lossless "
-                     "copy disabled\n" );
+            fprintf( stderr, "join: picture filters require re-encode; "
+                     "lossless copy disabled\n" );
             join_copy = HB_JOIN_COPY_OFF;
         }
 

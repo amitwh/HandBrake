@@ -91,6 +91,7 @@ static int join_advance( hb_joinreader_t * j )
         }
         st->cur_range++;
         j->range_open = 1;
+        j->job->join_current_input = j->cur;
         return 1;
     }
     return 0;

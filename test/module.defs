@@ -58,6 +58,7 @@ ifeq ($(HOST.system),darwin)
     TEST.GCC.l += iconv
 else ifeq ($(HOST.system),linux)
     TEST.GCC.l += pthread dl m
+TEST.GCC.l += $(shell pkg-config --libs-only-l freetype2 2>/dev/null | sed -e 's/-l//g')
 ifeq (1, $(FEATURE.numa))
     TEST.GCC.l += numa
 endif

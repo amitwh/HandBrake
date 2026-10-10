@@ -5327,6 +5327,9 @@ hb_filter_object_t * hb_filter_get( int filter_id )
         case HB_FILTER_WATERMARK:
             filter = &hb_filter_watermark;
             break;
+        case HB_FILTER_TIMESTAMP:
+            filter = &hb_filter_timestamp;
+            break;
 
         case HB_FILTER_ROTATE:
             filter = &hb_filter_rotate;
