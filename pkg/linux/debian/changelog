@@ -1,3 +1,10 @@
+handbrake (1.11.2-1~fork1) resolute; urgency=medium
+
+  * Local fork build of HandBrake 1.11.2 for Ubuntu 26.04.
+  * Modernized packaging for the GTK4/meson build system.
+  * Enabled VCE (AMD AMF) video encode support in the build.
+
+ -- Amit Haridas <amitwh@users.noreply.github.com>  Sat, 10 Oct 2026 10:50:42 +0530
 handbrake (svn2573) jaunty; urgency=low
   * CORE
    - Allows sources with no audio to be encoded
