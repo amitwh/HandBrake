@@ -828,11 +828,20 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
 #if HB_PROJECT_FEATURE_VAAPI
         // Must come after the pix_fmt assignment above: pix_fmt must
         // point at the VAAPI hardware format the vaapi encoders require.
-        if (hb_hwaccel_vaapi_is_encoder(job->vcodec) && !job->hw_device_ctx)
+        // With hardware decode active the job already owns a VAAPI
+        // device; reuse it rather than opening a second one.
+        if (hb_hwaccel_vaapi_is_encoder(job->vcodec))
         {
-            hb_hwaccel_hw_device_ctx_init(AV_HWDEVICE_TYPE_VAAPI,
-                                          job->hw_device_index,
-                                          (void **)&context->hw_device_ctx);
+            if (job->hw_device_ctx != NULL)
+            {
+                context->hw_device_ctx = av_buffer_ref(job->hw_device_ctx);
+            }
+            else
+            {
+                hb_hwaccel_hw_device_ctx_init(AV_HWDEVICE_TYPE_VAAPI,
+                                              job->hw_device_index,
+                                              (void **)&context->hw_device_ctx);
+            }
             if (context->hw_device_ctx == NULL)
             {
                 ret = 1;

@@ -3275,6 +3275,12 @@ static int ParseOptions( int argc, char ** argv )
                         hw_decode = HB_DECODE_QSV;
                     }
 #endif
+#if HB_PROJECT_FEATURE_VAAPI
+                    else if (!strcmp(optarg, "vaapi"))
+                    {
+                        hw_decode = HB_DECODE_VAAPI;
+                    }
+#endif
                     else if (!strcmp(optarg, "mf"))
                     {
                         hw_decode = HB_DECODE_MF;

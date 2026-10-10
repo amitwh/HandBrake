@@ -102,6 +102,11 @@ ifneq (,$(filter $(HOST.system),linux freebsd))
             FFMPEG.CONFIGURE.extra += --enable-encoder=h264_vaapi
             FFMPEG.CONFIGURE.extra += --enable-encoder=hevc_vaapi
             FFMPEG.CONFIGURE.extra += --enable-encoder=av1_vaapi
+            FFMPEG.CONFIGURE.extra += --enable-hwaccel=h264_vaapi
+            FFMPEG.CONFIGURE.extra += --enable-hwaccel=hevc_vaapi
+            FFMPEG.CONFIGURE.extra += --enable-hwaccel=vp9_vaapi
+            FFMPEG.CONFIGURE.extra += --enable-hwaccel=mpeg2_vaapi
+            FFMPEG.CONFIGURE.extra += --enable-hwaccel=vc1_vaapi
         endif
     else
         FFMPEG.CONFIGURE.extra += --disable-vaapi

@@ -190,7 +190,7 @@ hb_hwaccel_t hb_hwaccel_vaapi =
     .encoders   = va_encoders,
     .type       = AV_HWDEVICE_TYPE_VAAPI,
     .hw_pix_fmt = AV_PIX_FMT_VAAPI,
-    .caps       = 0,
+    .caps       = HB_HWACCEL_CAP_SCAN,
 };
 
 #else // !HB_PROJECT_FEATURE_VAAPI
