@@ -207,6 +207,7 @@ static int64_t  stop_at_pts    = 0;
 static int      stop_at_frame = 0;
 static char *   join = NULL;              // --join comma-separated paths
 static char *   speed = NULL;             // --speed factor
+static char *   watermark = NULL;         // --watermark settings string
 static int      join_copy = -1;           // --join-copy off|auto|force
 static int    * join_range_index = NULL;  // --range 1-based input indices
 static int64_t *join_range_start = NULL;  // --range start pts
@@ -674,6 +675,7 @@ cleanup:
     free(encoder_level);
     free(rotate);
     free(speed);
+    free(watermark);
     free(deblock);
     free(deblock_tune);
     free(detelecine);
@@ -1409,6 +1411,9 @@ static void ShowHelp(void)
 "                           \"off\", \"auto\" (default) or \"force\"\n"
 "       --speed <number>    Playback speed (0.25 - 4.0, default 1.0).\n"
 "                           Pitch-preserving audio, re-encode only.\n"
+"       --watermark <string>\n"
+"                           PNG/JPEG watermark: source=<file>, position=1-9\n"
+"                           or center, margin, scale (5-250%%), opacity\n"
 "   -c, --chapters <string> Select chapters (e.g. \"1-3\" for chapters\n"
 "                           1 to 3 or \"3\" for chapter 3 only,\n"
 "                           default: all chapters)\n"
@@ -2313,6 +2318,7 @@ static int ParseOptions( int argc, char ** argv )
     #define RANGE                         338
     #define JOIN_COPY                     339
     #define SPEED                         340
+    #define WATERMARK                     341
 
     for( ;; )
     {
@@ -2345,6 +2351,7 @@ static int ParseOptions( int argc, char ** argv )
             { "range",       required_argument, NULL,          RANGE },
             { "join-copy",   required_argument, NULL,      JOIN_COPY },
             { "speed",       required_argument, NULL,          SPEED },
+            { "watermark",   required_argument, NULL,      WATERMARK },
             { "output",      required_argument, NULL,    'o' },
             { "optimize",    no_argument,       NULL,        'O' },
             { "no-optimize", no_argument,       &optimize, 0 },
@@ -3346,6 +3353,10 @@ static int ParseOptions( int argc, char ** argv )
             case SPEED:
                 free( speed );
                 speed = strdup( optarg );
+                break;
+            case WATERMARK:
+                free( watermark );
+                watermark = strdup( optarg );
                 break;
             case ALLOWED_AUDIO_COPY:
             {
@@ -5141,6 +5152,10 @@ static hb_dict_t * PreparePreset(const char *preset_name)
         char *speed_settings = hb_strdup_printf("factor=%s", speed);
         hb_dict_set(preset, "PictureSpeed", hb_value_string(speed_settings));
         free(speed_settings);
+    }
+    if (watermark != NULL)
+    {
+        hb_dict_set(preset, "PictureWatermark", hb_value_string(watermark));
     }
     if (pad_disable)
     {
