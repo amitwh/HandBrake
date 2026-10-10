@@ -268,6 +268,7 @@ extern hb_hwaccel_t hb_hwaccel_videotoolbox;
 extern hb_hwaccel_t hb_hwaccel_qsv;
 extern hb_hwaccel_t hb_hwaccel_nvdec;
 extern hb_hwaccel_t hb_hwaccel_mf;
+extern hb_hwaccel_t hb_hwaccel_vaapi;
 #endif
 
 // Update win/CS/HandBrake.Interop/HandBrakeInterop/HbLib/hb_container_s.cs when changing this struct
@@ -728,6 +729,12 @@ struct hb_job_s
 #define HB_VCODEC_SVT_AV1_8BIT       (0x00000041 | HB_VCODEC_SVT_AV1_MASK | HB_VCODEC_AV1_MASK)
 #define HB_VCODEC_SVT_AV1            HB_VCODEC_SVT_AV1_8BIT
 #define HB_VCODEC_SVT_AV1_10BIT      (0x00000042 | HB_VCODEC_SVT_AV1_MASK | HB_VCODEC_AV1_MASK)
+
+#define HB_VCODEC_FFMPEG_VAAPI_H264         (0x00000043 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_H264_MASK)
+#define HB_VCODEC_FFMPEG_VAAPI_H265         (0x00000044 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_H265_MASK)
+#define HB_VCODEC_FFMPEG_VAAPI_H265_10BIT   (0x00000045 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_H265_MASK)
+#define HB_VCODEC_FFMPEG_VAAPI_AV1          (0x00000046 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_AV1_MASK)
+#define HB_VCODEC_FFMPEG_VAAPI_AV1_10BIT    (0x00000047 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_AV1_MASK)
 
 #define HB_VCODEC_VT_H264           (0x00000050 | HB_VCODEC_VT_MASK | HB_VCODEC_H264_MASK)
 #define HB_VCODEC_VT_H265           (0x00000051 | HB_VCODEC_VT_MASK | HB_VCODEC_H265_MASK)
@@ -1366,8 +1373,9 @@ struct hb_title_s
 #define HB_DECODE_NVDEC          0x04
 #define HB_DECODE_VIDEOTOOLBOX   0x08
 #define HB_DECODE_MF             0x10 // Windows Media Foundation
+#define HB_DECODE_VAAPI          0x20 // AMD/Intel/Mesa VAAPI
 
-#define HB_DECODE_HWACCEL        (HB_DECODE_NVDEC | HB_DECODE_VIDEOTOOLBOX | HB_DECODE_QSV | HB_DECODE_MF)
+#define HB_DECODE_HWACCEL        (HB_DECODE_NVDEC | HB_DECODE_VIDEOTOOLBOX | HB_DECODE_QSV | HB_DECODE_MF | HB_DECODE_VAAPI)
 #define HB_DECODE_FORCE_HW       0x80000000
 
     hb_metadata_t * metadata;
