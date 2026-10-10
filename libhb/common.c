@@ -4923,6 +4923,9 @@ static void job_clean( hb_job_t * job )
         }
         hb_list_close( &job->list_subtitle );
 
+        // clean up join input list
+        hb_join_input_list_close(&job->join_inputs);
+
         // clean up filter list
         while( ( filter = hb_list_item( job->list_filter, 0 ) ) )
         {
@@ -4975,6 +4978,76 @@ hb_job_t * hb_job_init_by_index( hb_handle_t * h, int title_index )
     if (title == NULL)
         return NULL;
     return hb_job_init(title);
+}
+
+hb_join_input_t * hb_join_input_copy(const hb_join_input_t *input)
+{
+    hb_join_input_t *input_copy;
+
+    if (input == NULL)
+    {
+        return NULL;
+    }
+    input_copy = calloc(1, sizeof(hb_join_input_t));
+    if (input_copy == NULL)
+    {
+        return NULL;
+    }
+    input_copy->path = strdup(input->path);
+    input_copy->title_id = input->title_id;
+    input_copy->range_count = input->range_count;
+    if (input->range_count > 0 && input->ranges != NULL)
+    {
+        input_copy->ranges = malloc(2 * input->range_count * sizeof(int64_t));
+        if (input_copy->ranges != NULL)
+        {
+            memcpy(input_copy->ranges, input->ranges,
+                   2 * input->range_count * sizeof(int64_t));
+        }
+    }
+    return input_copy;
+}
+
+void hb_join_input_close(hb_join_input_t **_input)
+{
+    if (_input && *_input)
+    {
+        free((*_input)->path);
+        free((*_input)->ranges);
+        free(*_input);
+        *_input = NULL;
+    }
+}
+
+hb_list_t * hb_join_input_list_copy(const hb_list_t *list)
+{
+    hb_list_t *list_copy;
+    int        ii;
+
+    if (list == NULL)
+    {
+        return NULL;
+    }
+    list_copy = hb_list_init();
+    for (ii = 0; ii < hb_list_count(list); ii++)
+    {
+        hb_list_add(list_copy, hb_join_input_copy(hb_list_item(list, ii)));
+    }
+    return list_copy;
+}
+
+void hb_join_input_list_close(hb_list_t **_list)
+{
+    if (_list && *_list)
+    {
+        hb_join_input_t *input;
+        while ((input = hb_list_item(*_list, 0)) != NULL)
+        {
+            hb_list_rem(*_list, input);
+            hb_join_input_close(&input);
+        }
+        hb_list_close(_list);
+    }
 }
 
 hb_job_t * hb_job_init( hb_title_t * title )

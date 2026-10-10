@@ -635,6 +635,28 @@ typedef enum
 } hb_anamorphic_mode_t;
 
 /******************************************************************************
+ * hb_join_input_t: one input of a composite (join) job.
+ * Ranges are half-open [Start, Stop) PTS pairs (1/90000 s units) on that
+ * input's own timeline. range_count == 0 means keep the entire file.
+ *****************************************************************************/
+typedef struct hb_join_input_s
+{
+    char    * path;
+    int       title_id;
+    int64_t * ranges;       // 2 * range_count values: start, stop pairs
+    int       range_count;
+} hb_join_input_t;
+
+#define HB_JOIN_COPY_OFF    0
+#define HB_JOIN_COPY_AUTO   1
+#define HB_JOIN_COPY_FORCE  2
+
+hb_join_input_t * hb_join_input_copy(const hb_join_input_t *input);
+void              hb_join_input_close(hb_join_input_t **input);
+hb_list_t       * hb_join_input_list_copy(const hb_list_t *list);
+void              hb_join_input_list_close(hb_list_t **list);
+
+/******************************************************************************
  * hb_job_t: settings to be filled by the UI
  * Update win/CS/HandBrake.Interop/HandBrakeInterop/HbLib/hb_job_s.cs when changing this struct
  *****************************************************************************/
@@ -870,6 +892,11 @@ struct hb_job_s
     hb_list_t     * list_attachment;
 
     hb_metadata_t * metadata;
+
+    /* Composite (join) inputs. NULL, or a single entry with no ranges,
+     * is a legacy single-source job. */
+    hb_list_t     * join_inputs;
+    int             join_copy;      // HB_JOIN_COPY_OFF/_AUTO/_FORCE
 
     /*
      * Muxer settings

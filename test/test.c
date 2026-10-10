@@ -205,6 +205,13 @@ static int64_t  start_at_pts    = 0;
 static int      start_at_frame = 0;
 static int64_t  stop_at_pts    = 0;
 static int      stop_at_frame = 0;
+static char *   join = NULL;              // --join comma-separated paths
+static int      join_copy = -1;           // --join-copy off|auto|force
+static int    * join_range_index = NULL;  // --range 1-based input indices
+static int64_t *join_range_start = NULL;  // --range start pts
+static int64_t *join_range_stop = NULL;   // --range stop pts (0 = to EOF)
+static int      join_range_count = 0;
+static hb_list_t *join_input_list = NULL; // resolved in CheckOptions
 static uint64_t min_title_duration = 10;
 static uint64_t max_title_duration = 0;
 #if HB_PROJECT_FEATURE_QSV
@@ -596,6 +603,14 @@ int main( int argc, char ** argv )
             }
         }
 
+        if ( join_input_list != NULL )
+        {
+            // WS3 Task 2 replaces this gate with hb_scan_join.
+            fprintf( stderr, "join scan not yet implemented\n" );
+            done_error = HB_ERROR_WRONG_INPUT;
+            goto cleanup;
+        }
+
         /* Feed libhb with a DVD to scan */
         fprintf( stderr, "Opening %s...\n", input );
 
@@ -644,6 +659,11 @@ cleanup:
     free(format);
     free(input);
     free(output);
+    free(join);
+    free(join_range_index);
+    free(join_range_start);
+    free(join_range_stop);
+    hb_join_input_list_close(&join_input_list);
     free(preset_name);
     free(encoder_preset);
     free(encoder_tune);
@@ -1373,6 +1393,17 @@ static void ShowHelp(void)
 "       --main-feature      Detect and select the main feature title.\n"
 "       --keep-duplicate-titles\n"
 "                           Keep duplicate titles when scanning (Blu-ray only)\n"
+"       --join <files>      Comma-separated files to join into one output\n"
+"                           (replaces --input; commas in filenames unsupported)\n"
+"       --range <number>:<start>-<stop>\n"
+"                           Keep only the given time range of the numbered\n"
+"                           join input (repeatable; times are seconds or\n"
+"                           HH:MM:SS.mmm; an empty side means 0 / end of\n"
+"                           file; frame-accurate when re-encoding, snapped\n"
+"                           to keyframes in lossless copy mode)\n"
+"       --join-copy <string>\n"
+"                           Lossless stream copy when all inputs match:\n"
+"                           \"off\", \"auto\" (default) or \"force\"\n"
 "   -c, --chapters <string> Select chapters (e.g. \"1-3\" for chapters\n"
 "                           1 to 3 or \"3\" for chapter 3 only,\n"
 "                           default: all chapters)\n"
@@ -2169,6 +2200,27 @@ static double parse_hhmmss_strtok(void)
     return duration;
 }
 
+static double parse_hhmmss(const char *time)
+{
+    /* String variant of parse_hhmmss_strtok: parses hh:mm:ss.ss, mm:ss.ss
+     * or ss.ss into double seconds without disturbing strtok state. */
+    double duration = 0;
+    char *str = strdup(time);
+    char *tok = str;
+    while (tok != NULL && *tok != 0)
+    {
+        char *end = strchr(tok, ':');
+        if (end != NULL)
+        {
+            *end = 0;
+        }
+        duration = 60 * duration + strtod(tok, NULL);
+        tok = end != NULL ? end + 1 : NULL;
+    }
+    free(str);
+    return duration;
+}
+
 /****************************************************************************
  * ParseOptions:
  ****************************************************************************/
@@ -2252,6 +2304,9 @@ static int ParseOptions( int argc, char ** argv )
     #define HDR_DYNAMIC_METADATA          334
     #define AUDIO_AUTONAMING_BEHAVIOUR    335
     #define COLOR_RANGE                   336
+    #define JOIN                          337
+    #define RANGE                         338
+    #define JOIN_COPY                     339
 
     for( ;; )
     {
@@ -2280,6 +2335,9 @@ static int ParseOptions( int argc, char ** argv )
 
             { "format",      required_argument, NULL,    'f' },
             { "input",       required_argument, NULL,    'i' },
+            { "join",        required_argument, NULL,           JOIN },
+            { "range",       required_argument, NULL,          RANGE },
+            { "join-copy",   required_argument, NULL,      JOIN_COPY },
             { "output",      required_argument, NULL,    'o' },
             { "optimize",    no_argument,       NULL,        'O' },
             { "no-optimize", no_argument,       &optimize, 0 },
@@ -3185,6 +3243,99 @@ static int ParseOptions( int argc, char ** argv )
                 free( stop_at_string );
                 break;
             }
+            case JOIN:
+                free( join );
+                join = strdup( optarg );
+                break;
+            case RANGE:
+            {
+                char *range_string = strdup( optarg );
+                char *colon = strchr( range_string, ':' );
+                char *dash;
+                int  *new_index;
+                int64_t *new_start, *new_stop;
+
+                if ( colon == NULL )
+                {
+                    fprintf( stderr, "Error: --range expects "
+                             "<input>:<start>-<stop>\n" );
+                    free( range_string );
+                    return -1;
+                }
+                *colon = 0;
+                dash = strchr( colon + 1, '-' );
+                if ( dash == NULL )
+                {
+                    fprintf( stderr, "Error: --range expects "
+                             "<input>:<start>-<stop>\n" );
+                    free( range_string );
+                    return -1;
+                }
+                *dash = 0;
+
+                new_index = realloc( join_range_index,
+                            ( join_range_count + 1 ) * sizeof( int ) );
+                new_start = realloc( join_range_start,
+                            ( join_range_count + 1 ) * sizeof( int64_t ) );
+                new_stop = realloc( join_range_stop,
+                            ( join_range_count + 1 ) * sizeof( int64_t ) );
+                if ( new_index == NULL || new_start == NULL ||
+                     new_stop == NULL )
+                {
+                    fprintf( stderr, "Error: out of memory\n" );
+                    free( range_string );
+                    return -1;
+                }
+                join_range_index = new_index;
+                join_range_start = new_start;
+                join_range_stop = new_stop;
+
+                {
+                    const char *start_str = colon + 1;
+                    const char *stop_str = dash + 1;
+
+                    join_range_index[join_range_count] = atoi( range_string );
+                    join_range_start[join_range_count] =
+                        *start_str ? ( int64_t )( parse_hhmmss( start_str )
+                                                  * 90e3 ) : 0;
+                    join_range_stop[join_range_count] =
+                        *stop_str ? ( int64_t )( parse_hhmmss( stop_str )
+                                                * 90e3 ) : 0;
+                    if ( join_range_index[join_range_count] < 1 ||
+                         ( join_range_stop[join_range_count] != 0 &&
+                           join_range_stop[join_range_count] <=
+                           join_range_start[join_range_count] ) )
+                    {
+                        fprintf( stderr, "Error: malformed --range %s\n",
+                                 optarg );
+                        free( range_string );
+                        return -1;
+                    }
+                    join_range_count++;
+                }
+                free( range_string );
+                break;
+            }
+            case JOIN_COPY:
+                if ( !strcmp( optarg, "off" ) )
+                {
+                    join_copy = HB_JOIN_COPY_OFF;
+                }
+                else if ( !strcmp( optarg, "auto" ) )
+                {
+                    join_copy = HB_JOIN_COPY_AUTO;
+                }
+                else if ( !strcmp( optarg, "force" ) )
+                {
+                    join_copy = HB_JOIN_COPY_FORCE;
+                }
+                else
+                {
+                    fprintf( stderr, "Error: --join-copy expects "
+                             "off, auto or force\n" );
+                    return -1;
+                }
+                break;
             case ALLOWED_AUDIO_COPY:
             {
                 audio_copy_list = hb_str_vsplit(optarg, ',');
@@ -3728,6 +3879,130 @@ static int CheckOptions( int argc, char ** argv )
     {
         // Everything should be defined in the queue.
         return 0;
+    }
+
+    if ( join != NULL )
+    {
+        hb_join_input_t *first;
+        char *join_dup = strdup( join );
+
+        if ( input != NULL && *input != '\0' )
+        {
+            fprintf( stderr, "Error: --join and --input are mutually "
+                     "exclusive; list all files in --join\n" );
+            free( join_dup );
+            return 1;
+        }
+
+        join_input_list = hb_list_init();
+        for ( char *tok = strtok( join_dup, "," ); tok != NULL;
+              tok = strtok( NULL, "," ) )
+        {
+            hb_join_input_t *join_input =
+                calloc( 1, sizeof( hb_join_input_t ) );
+            if ( join_input == NULL )
+            {
+                fprintf( stderr, "Error: out of memory\n" );
+                free( join_dup );
+                return 1;
+            }
+            join_input->path = strdup( tok );
+            hb_list_add( join_input_list, join_input );
+        }
+        free( join_dup );
+
+        if ( hb_list_count( join_input_list ) < 1 )
+        {
+            fprintf( stderr, "Error: --join requires a comma-separated "
+                     "file list\n" );
+            return 1;
+        }
+
+        for ( int rr = 0; rr < join_range_count; rr++ )
+        {
+            hb_join_input_t *join_input;
+            int64_t *new_ranges;
+
+            if ( join_range_index[rr] < 1 ||
+                 join_range_index[rr] > hb_list_count( join_input_list ) )
+            {
+                fprintf( stderr, "Error: --range input index %d out of "
+                         "range (1-%d)\n", join_range_index[rr],
+                         hb_list_count( join_input_list ) );
+                return 1;
+            }
+            join_input =
+                hb_list_item( join_input_list, join_range_index[rr] - 1 );
+            new_ranges = realloc( join_input->ranges,
+                        2 * ( join_input->range_count + 1 ) *
+                        sizeof( int64_t ) );
+            if ( new_ranges == NULL )
+            {
+                fprintf( stderr, "Error: out of memory\n" );
+                return 1;
+            }
+            join_input->ranges = new_ranges;
+            join_input->ranges[2 * join_input->range_count] =
+                join_range_start[rr];
+            join_input->ranges[2 * join_input->range_count + 1] =
+                join_range_stop[rr];
+            join_input->range_count++;
+        }
+
+        // Sort each input's ranges by start, then verify no overlap.
+        // A stop of 0 means "to end of file" and can only be last.
+        for ( int jj = 0; jj < hb_list_count( join_input_list ); jj++ )
+        {
+            hb_join_input_t *join_input =
+                hb_list_item( join_input_list, jj );
+            for ( int rr = 1; rr < join_input->range_count; rr++ )
+            {
+                int64_t start = join_input->ranges[2 * rr];
+                int64_t stop = join_input->ranges[2 * rr + 1];
+                int kk = rr - 1;
+                while ( kk >= 0 && join_input->ranges[2 * kk] > start )
+                {
+                    join_input->ranges[2 * ( kk + 1 )] =
+                        join_input->ranges[2 * kk];
+                    join_input->ranges[2 * ( kk + 1 ) + 1] =
+                        join_input->ranges[2 * kk + 1];
+                    kk--;
+                }
+                join_input->ranges[2 * ( kk + 1 )] = start;
+                join_input->ranges[2 * ( kk + 1 ) + 1] = stop;
+            }
+            for ( int rr = 1; rr < join_input->range_count; rr++ )
+            {
+                int64_t prev_stop =
+                    join_input->ranges[2 * ( rr - 1 ) + 1];
+                if ( prev_stop != 0 &&
+                     join_input->ranges[2 * rr] < prev_stop )
+                {
+                    fprintf( stderr, "Error: --range ranges overlap in "
+                             "join input %d\n", jj + 1 );
+                    return 1;
+                }
+            }
+        }
+
+        // The generic single-input machinery keys off the first path.
+        first = hb_list_item( join_input_list, 0 );
+        input = strdup( first->path );
+
+        if ( join_copy < 0 )
+        {
+            join_copy = HB_JOIN_COPY_AUTO;
+        }
+    }
+    else if ( join_range_count > 0 )
+    {
+        fprintf( stderr, "Error: --range requires --join\n" );
+        return 1;
+    }
+    else if ( join_copy >= 0 )
+    {
+        fprintf( stderr, "Error: --join-copy requires --join\n" );
+        return 1;
     }
 
     if (preset_export_name == NULL && (input == NULL || *input == '\0'))
@@ -5103,6 +5378,33 @@ PrepareJob(hb_handle_t *h, hb_title_t *title, hb_dict_t *preset_dict)
         if (range_seek_points)
             hb_dict_set(range_dict, "SeekPoints",
                     hb_value_int(range_seek_points));
+    }
+
+    if (join_input_list != NULL && hb_list_count(join_input_list) > 0)
+    {
+        hb_dict_t *source_dict = hb_dict_get(job_dict, "Source");
+        hb_value_array_t *join_list = hb_value_array_init();
+        for (int jj = 0; jj < hb_list_count(join_input_list); jj++)
+        {
+            hb_join_input_t *join_input = hb_list_item(join_input_list, jj);
+            hb_dict_t *join_dict = hb_dict_init();
+            hb_value_array_t *ranges = hb_value_array_init();
+            for (int rr = 0; rr < join_input->range_count; rr++)
+            {
+                hb_dict_t *range_dict = hb_dict_init();
+                hb_dict_set(range_dict, "Start",
+                            hb_value_int(join_input->ranges[2 * rr]));
+                hb_dict_set(range_dict, "Stop",
+                            hb_value_int(join_input->ranges[2 * rr + 1]));
+                hb_value_array_append(ranges, range_dict);
+            }
+            hb_dict_set(join_dict, "Path", hb_value_string(join_input->path));
+            hb_dict_set(join_dict, "Title", hb_value_int(1));
+            hb_dict_set(join_dict, "Ranges", ranges);
+            hb_value_array_append(join_list, join_dict);
+        }
+        hb_dict_set(source_dict, "JoinInputs", join_list);
+        hb_dict_set(source_dict, "JoinCopy", hb_value_int(join_copy));
     }
 
     if (hb_value_get_bool(hb_dict_get(preset_dict, "MetadataPassthru")) == 0)

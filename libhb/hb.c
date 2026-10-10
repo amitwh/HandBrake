@@ -1867,6 +1867,7 @@ static void hb_add_internal( hb_handle_t * h, hb_job_t * job, hb_list_t *list_pa
     job_copy->list_audio = hb_audio_list_copy( job->list_audio );
     job_copy->list_attachment = hb_attachment_list_copy( job->list_attachment );
     job_copy->metadata = hb_metadata_copy( job->metadata );
+    job_copy->join_inputs = hb_join_input_list_copy( job->join_inputs );
 
     if (job->encoder_preset != NULL)
         job_copy->encoder_preset = strdup(job->encoder_preset);
@@ -1912,6 +1913,7 @@ hb_job_t* hb_job_copy(hb_job_t * job)
     job_copy->list_audio = hb_audio_list_copy( job->list_audio );
     job_copy->list_attachment = hb_attachment_list_copy( job->list_attachment );
     job_copy->metadata = hb_metadata_copy( job->metadata );
+    job_copy->join_inputs = hb_join_input_list_copy( job->join_inputs );
 
     if (job->encoder_preset != NULL)
         job_copy->encoder_preset = strdup(job->encoder_preset);

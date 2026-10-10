@@ -722,6 +722,32 @@ hb_dict_t* hb_job_to_dict( const hb_job_t * job )
     }
     hb_dict_set(source_dict, "Range", range_dict);
 
+    if (job->join_inputs != NULL && hb_list_count(job->join_inputs) > 0)
+    {
+        hb_value_array_t *join_list = hb_value_array_init();
+        for (int ii = 0; ii < hb_list_count(job->join_inputs); ii++)
+        {
+            hb_join_input_t *input = hb_list_item(job->join_inputs, ii);
+            hb_dict_t *input_dict = hb_dict_init();
+            hb_value_array_t *ranges = hb_value_array_init();
+            for (int rr = 0; rr < input->range_count; rr++)
+            {
+                hb_dict_t *range_dict = hb_dict_init();
+                hb_dict_set(range_dict, "Start",
+                            hb_value_int(input->ranges[2 * rr]));
+                hb_dict_set(range_dict, "Stop",
+                            hb_value_int(input->ranges[2 * rr + 1]));
+                hb_value_array_append(ranges, range_dict);
+            }
+            hb_dict_set(input_dict, "Path", hb_value_string(input->path));
+            hb_dict_set(input_dict, "Title", hb_value_int(input->title_id));
+            hb_dict_set(input_dict, "Ranges", ranges);
+            hb_value_array_append(join_list, input_dict);
+        }
+        hb_dict_set(source_dict, "JoinInputs", join_list);
+        hb_dict_set(source_dict, "JoinCopy", hb_value_int(job->join_copy));
+    }
+
     hb_dict_t *video_dict = hb_dict_get(dict, "Video");
     hb_dict_set(video_dict, "ColorInputFormat",
                 hb_value_int(job->input_pix_fmt));
@@ -1368,6 +1394,54 @@ hb_job_t* hb_dict_to_job( hb_handle_t * h, hb_dict_t *dict )
                 job->frame_to_start = range_start;
             if (range_end > 0)
                 job->frame_to_stop = range_end - job->frame_to_start + 1;
+        }
+    }
+
+    // Join inputs are additive; older jobs without "JoinInputs" are
+    // plain single-source jobs and skip this block entirely.
+    hb_dict_t *source_dict = hb_dict_get(dict, "Source");
+    hb_value_array_t *join_inputs = hb_dict_get(source_dict, "JoinInputs");
+    if (join_inputs != NULL &&
+        hb_value_type(join_inputs) == HB_VALUE_TYPE_ARRAY)
+    {
+        int count = hb_value_array_len(join_inputs);
+        if (count > 0)
+        {
+            job->join_inputs = hb_list_init();
+            for (int ii = 0; ii < count; ii++)
+            {
+                hb_dict_t      *input_dict = hb_value_array_get(join_inputs, ii);
+                hb_join_input_t *input = calloc(1, sizeof(hb_join_input_t));
+                const char     *path = hb_value_get_string(
+                                        hb_dict_get(input_dict, "Path"));
+
+                if (path != NULL)
+                {
+                    input->path = strdup(path);
+                }
+                input->title_id = hb_dict_get_int(input_dict, "Title");
+
+                hb_value_array_t *ranges = hb_dict_get(input_dict, "Ranges");
+                if (ranges != NULL &&
+                    hb_value_type(ranges) == HB_VALUE_TYPE_ARRAY)
+                {
+                    int range_count = hb_value_array_len(ranges);
+                    if (range_count > 0)
+                    {
+                        input->ranges = calloc(2 * range_count,
+                                               sizeof(int64_t));
+                        for (int rr = 0; rr < range_count; rr++)
+                        {
+                            hb_dict_t *range_dict = hb_value_array_get(ranges, rr);
+                            input->ranges[2 * rr] = hb_dict_get_int(range_dict, "Start");
+                            input->ranges[2 * rr + 1] = hb_dict_get_int(range_dict, "Stop");
+                        }
+                        input->range_count = range_count;
+                    }
+                }
+                hb_list_add(job->join_inputs, input);
+            }
+            job->join_copy = hb_dict_get_int(source_dict, "JoinCopy");
         }
     }
 
