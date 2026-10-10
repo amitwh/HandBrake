@@ -192,4 +192,11 @@ tracking upstream untouched.
 **Workstream status:** WS1 ✅ Complete (2026-10-10) — debs built, installed, smoke-tested on
 Ubuntu 26.04. WS2 ✅ Complete (2026-10-10) — VAAPI encode (H.264/H.265/H.265-10bit, ~5×
 realtime) + hw decode (`--enable-hw-decoding vaapi`, 27% CPU drop on HEVC10) shipped in
-`1.11.2-1~fork2` debs; AV1 probe-hidden on VCN 3.0 as designed. WS3 pending.
+`1.11.2-1~fork2` debs; AV1 probe-hidden on VCN 3.0 as designed. WS3 ✅ Complete (2026-10-10)
+— smart join (lossless copy bit-identical on H.264, frame-accurate re-encode fallback),
+per-input ranges, speed/watermark/timestamp filters, GTK4 join mode and filter controls,
+shipped in `1.11.2-1~fork3` debs. Deviations from design: watermark composites via hb_blend
+(not avfilter overlay); audio speed via atempo inside the decoder; GUI joins are whole-file
+(ranges are CLI `--range`); known corner: lossless joins of x265-default-GOP fixtures can
+end with a benign trailer-write error (output file complete); multi-range jobs default to
+MKV (mp4 trailer write).

@@ -1,3 +1,14 @@
+handbrake (1.11.2-1~fork3) resolute; urgency=medium
+
+  * Smart join: lossless stream-copy when inputs match (verified
+    bit-identical), frame-accurate re-encode otherwise; per-input time
+    ranges (--join/--range/--join-copy).
+  * Speed filter (0.25x-4x, pitch-preserving audio), watermark
+    (PNG/JPEG, hb_blend) and FreeType timestamp burn-in.
+  * GTK4 join mode with eligibility badge; filters tab controls.
+
+ -- Amit Haridas <amitwh@users.noreply.github.com>  Fri, 10 Oct 2026 19:15:00 +0530
+
 handbrake (1.11.2-1~fork2) resolute; urgency=medium
 
   * Enable pure-Mesa VAAPI hardware encode/decode (AMD Cezanne/VCN 3.0).

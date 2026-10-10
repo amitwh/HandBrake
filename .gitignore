@@ -43,3 +43,11 @@ gtk/missing
 gtk/po/Makevars.template
 gtk/po/*.gmo
 gtk/po/*~
+# deb build artifacts
+pkg/linux/debian/.debhelper/
+pkg/linux/debian/files
+pkg/linux/debian/*.substvars
+pkg/linux/debian/handbrake-cli/
+pkg/linux/debian/handbrake-gtk/
+pkg/linux/debian/tmp/
+pkg/linux/share/

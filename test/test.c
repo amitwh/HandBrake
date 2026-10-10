@@ -5480,6 +5480,24 @@ PrepareJob(hb_handle_t *h, hb_title_t *title, hb_dict_t *preset_dict)
             join_copy = HB_JOIN_COPY_OFF;
         }
 
+        // Ranges beyond the first create timeline gaps that trip the
+        // mp4 muxer's trailer write; default multi-range jobs to MKV
+        // (matching the copy-mode policy) unless a format was forced.
+        {
+            int total_ranges = 0;
+            for ( int jj = 0; jj < hb_list_count( join_input_list ); jj++ )
+            {
+                hb_join_input_t *join_input =
+                    hb_list_item( join_input_list, jj );
+                total_ranges += join_input->range_count > 0 ?
+                                join_input->range_count : 1;
+            }
+            if ( total_ranges > 1 && format == NULL )
+            {
+                hb_dict_set( dest_dict, "Mux", hb_value_string( "av_mkv" ) );
+            }
+        }
+
         if ( join_copy != HB_JOIN_COPY_OFF && title->join_eligible )
         {
             hb_dict_t *video_dict = hb_dict_get(job_dict, "Video");

@@ -534,6 +534,7 @@ static void JoinScanFunc(void *_data)
             }
         }
     }
+    composite->join_first_duration = composite->duration;
     composite->duration = total_duration;
     composite->join_eligible = eligible;
     snprintf(composite->join_eligibility_reason,

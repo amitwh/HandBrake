@@ -40,6 +40,8 @@ struct hb_joinreader_s
     int                 range_open; // current range has not seen video yet
     int                 copy_mode; // HB_VCODEC_COPY_JOIN semantics
     int64_t             last_emit_stop; // last emitted video stop (composite)
+    int64_t             last_emit_dts[2]; // per track kind: [0] video,
+                                          // [1] audio/subtitle
 };
 
 static int join_advance( hb_joinreader_t * j )
@@ -123,6 +125,8 @@ hb_joinreader_t * hb_joinreader_open( hb_job_t * job )
     j->chapter = 1;
     j->copy_mode = ( job->vcodec == HB_VCODEC_COPY_JOIN );
     j->last_emit_stop = AV_NOPTS_VALUE;
+    j->last_emit_dts[0] = AV_NOPTS_VALUE;
+    j->last_emit_dts[1] = AV_NOPTS_VALUE;
     j->state   = calloc( count, sizeof( join_input_state_t ) );
 
     for ( int ii = 0; ii < count; ii++ )
@@ -136,7 +140,12 @@ hb_joinreader_t * hb_joinreader_open( hb_job_t * job )
             hb_joinreader_close( &j );
             return NULL;
         }
-        j->state[ii].duration = title->duration;
+        // Input 0's title IS the composite, whose duration is the sum
+        // of ranges; clamp ranges against the ORIGINAL input duration
+        j->state[ii].duration = (ii == 0 &&
+                                 job->title->join_first_duration > 0) ?
+                                job->title->join_first_duration :
+                                title->duration;
         j->state[ii].title    = title;
     }
 
@@ -176,13 +185,23 @@ static void join_rewrite_and_filter( hb_joinreader_t * j,
         {
             buf->s.renderOffset += offset;
         }
-        else if ( j->copy_mode )
+        else if ( j->copy_mode &&
+                  buf->s.renderOffset == AV_NOPTS_VALUE )
         {
             // Copy mode forwards raw demux timestamps to the muxer;
             // sources whose leading packets carry no DTS (e.g. mkv)
             // would trip the muxer's monotonicity check at a seam.
-            // Synthesize a DTS from the composite start.
-            buf->s.renderOffset = buf->s.start;
+            // Synthesize a DTS one frame before the composite start so
+            // it stays strictly below the packet's PTS and strictly
+            // above the previous input's timestamps.
+            int64_t frame_dur =
+                90000LL * j->title->vrate.den / j->title->vrate.num;
+            buf->s.renderOffset = buf->s.start - frame_dur;
+            if ( j->last_emit_stop != AV_NOPTS_VALUE &&
+                 buf->s.renderOffset < j->last_emit_stop - frame_dur )
+            {
+                buf->s.renderOffset = j->last_emit_stop - frame_dur;
+            }
         }
 
         if ( buf->s.id == title->video_id )
@@ -237,6 +256,31 @@ static void join_rewrite_and_filter( hb_joinreader_t * j,
                 continue;
             }
             buf->s.new_chap = 0;
+        }
+        if ( j->copy_mode )
+        {
+            // Muxers reject equal-or-decreasing DTS within a track; the
+            // seam between two inputs can produce exact duplicates.
+            // Track video and non-video separately (their DTS timelines
+            // interleave but don't order against each other).
+            int64_t *last_dts =
+                &j->last_emit_dts[buf->s.id == title->video_id ? 0 : 1];
+            if ( *last_dts != AV_NOPTS_VALUE &&
+                 buf->s.renderOffset != AV_NOPTS_VALUE &&
+                 buf->s.renderOffset <= *last_dts )
+            {
+                buf->s.renderOffset = *last_dts + 1;
+                // Never let the correction push DTS past this packet's
+                // own PTS (muxers reject dts > pts).
+                if ( buf->s.renderOffset >= buf->s.start )
+                {
+                    buf->s.renderOffset = buf->s.start - 1;
+                }
+            }
+            if ( buf->s.renderOffset != AV_NOPTS_VALUE )
+            {
+                *last_dts = buf->s.renderOffset;
+            }
         }
         hb_buffer_list_append( out_list, buf );
     }
