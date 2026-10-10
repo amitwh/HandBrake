@@ -51,3 +51,4 @@ pkg/linux/debian/handbrake-cli/
 pkg/linux/debian/handbrake-gtk/
 pkg/linux/debian/tmp/
 pkg/linux/share/
+/debian/

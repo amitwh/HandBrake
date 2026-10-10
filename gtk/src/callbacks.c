@@ -1918,6 +1918,14 @@ do_source_dialog(gboolean dir, signal_user_data_t *ud)
 }
 
 G_MODULE_EXPORT void
+hw_decode_changed_cb(GtkComboBoxText *combo, signal_user_data_t *ud)
+{
+    const char *id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(combo));
+    ghb_dict_set_string(ud->prefs, "HwDecode", id ? id : "0");
+    ghb_prefs_store();
+}
+
+G_MODULE_EXPORT void
 join_files_toggled_cb(GtkCheckButton *check, signal_user_data_t *ud)
 {
     ghb_dict_set(ud->prefs, "JoinFiles",
@@ -2749,6 +2757,20 @@ ghb_set_title_settings(signal_user_data_t *ud, GhbValue *settings)
         title_dict = hb_title_to_dict(ghb_scan_handle(), title_id);
         ghb_dict_set(settings, "Title", title_dict);
 
+
+        // Preferences-level hardware decode (Video.HardwareDecode)
+        {
+            const char *hw = ghb_dict_get_string(ud->prefs, "HwDecode");
+            int hw_decode = hw != NULL ? atoi(hw) : 0;
+            if (hw_decode != 0)
+            {
+                GhbValue *video_dict = ghb_dict_get(job_dict, "Video");
+                if (video_dict != NULL)
+                {
+                    ghb_dict_set_int(video_dict, "HardwareDecode", hw_decode);
+                }
+            }
+        }
 
         // Composite (join) titles: attach the join payload and surface
         // the lossless eligibility

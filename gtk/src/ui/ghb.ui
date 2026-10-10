@@ -6271,6 +6271,34 @@ battery is charged.</property>
                                 </layout>
                               </object>
                             </child>
+                            <child>
+                              <object class="GtkBox" id="hw_decode_box">
+                                <property name="spacing">4</property>
+                                <child>
+                                  <object class="GtkComboBoxText" id="HwDecode">
+                                    <property name="valign">center</property>
+                                    <property name="active">0</property>
+                                    <property name="tooltip-text" translatable="yes">Decode the source with hardware when available. VAAPI works with the open Mesa drivers on this system; falls back to software automatically when the decoder cannot be opened.</property>
+                                    <items>
+                                      <item id="0" translatable="yes">Software</item>
+                                      <item id="32" translatable="yes">VAAPI</item>
+                                    </items>
+                                    <signal name="changed" handler="hw_decode_changed_cb" swapped="no"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="hw_decode_label">
+                                    <property name="halign">start</property>
+                                    <property name="label" translatable="yes">Hardware decode (VAAPI)</property>
+                                    <property name="hexpand">1</property>
+                                  </object>
+                                </child>
+                                <layout>
+                                  <property name="row">8</property>
+                                  <property name="column">0</property>
+                                </layout>
+                              </object>
+                            </child>
                           </object>
                         </child>
                         <child>
