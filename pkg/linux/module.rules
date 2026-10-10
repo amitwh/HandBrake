@@ -120,7 +120,7 @@ $(PKG.gui.tmp.deb): GNUmakefile
 	fakeroot $(MAKE) -C $(SRC/) -f debian/rules clean
 	$(MAKE) BUILDDIR=$(abspath $(BUILD)) CONFIGURE=configure -C $(SRC/) -f debian/rules build
 	echo $(PKG.out.abs/)
-	fakeroot $(MAKE) FORCEVERSION="-- -v$(HB.debversion)" BUILDDIR=$(abspath $(BUILD)) CONFIGURE=configure PKGDESTDIR=$(PKG.out.abs/ -C $(SRC/) -f debian/rules binary
+	fakeroot $(MAKE) FORCEVERSION="-- -v$(HB.debversion)" BUILDDIR=$(abspath $(BUILD)) CONFIGURE=configure PKGDESTDIR=$(PKG.out.abs/) -C $(SRC/) -f debian/rules binary
 
 
 $(PKG.gui.deb): | $(dir $(PKG.gui.deb))

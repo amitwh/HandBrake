@@ -1,5 +1,10 @@
 PKG.in.abs/ = $(abspath $(PKG.in/))/
 PKG.out.abs/ = $(abspath $(PKG.out/))/
+
+# Fork: pin deb version to the changelog version. The generated snapshot
+# debversion embeds the git branch name, whose slash breaks make target
+# paths, and dh_gencontrol's -v override would diverge from debian/changelog.
+HB.debversion = 1.11.2-1~fork1
 STAGE.out.abs/ = $(abspath $(STAGE.out/))/
 STAGE.out.src.abs/ = $(abspath $(STAGE.out.src/))/
 
