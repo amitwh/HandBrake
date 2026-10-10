@@ -1920,6 +1920,12 @@ do_source_dialog(gboolean dir, signal_user_data_t *ud)
 G_MODULE_EXPORT void
 hw_decode_changed_cb(GtkComboBoxText *combo, signal_user_data_t *ud)
 {
+    // The autoconnect user-data is unset during early signal emissions
+    ud = ghb_ud();
+    if (ud == NULL)
+    {
+        return;
+    }
     const char *id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(combo));
     ghb_dict_set_string(ud->prefs, "HwDecode", id ? id : "0");
     ghb_prefs_store();
@@ -1928,6 +1934,12 @@ hw_decode_changed_cb(GtkComboBoxText *combo, signal_user_data_t *ud)
 G_MODULE_EXPORT void
 join_files_toggled_cb(GtkCheckButton *check, signal_user_data_t *ud)
 {
+    // The autoconnect user-data is unset during early signal emissions
+    ud = ghb_ud();
+    if (ud == NULL)
+    {
+        return;
+    }
     ghb_dict_set(ud->prefs, "JoinFiles",
                  ghb_boolean_value(gtk_check_button_get_active(check)));
     ghb_prefs_store();
@@ -1936,6 +1948,12 @@ join_files_toggled_cb(GtkCheckButton *check, signal_user_data_t *ud)
 G_MODULE_EXPORT void
 join_copy_changed_cb(GtkComboBoxText *combo, signal_user_data_t *ud)
 {
+    // The autoconnect user-data is unset during early signal emissions
+    ud = ghb_ud();
+    if (ud == NULL)
+    {
+        return;
+    }
     const char *id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(combo));
     ghb_dict_set_string(ud->prefs, "JoinCopyMode", id ? id : "auto");
     ghb_prefs_store();
