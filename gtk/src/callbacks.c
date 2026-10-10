@@ -5086,6 +5086,9 @@ about_action_cb (GSimpleAction *action, GVariant *param, signal_user_data_t *ud)
 #if HB_PROJECT_FEATURE_VCE
         "- AMD VCN\n"
 #endif
+#if HB_PROJECT_FEATURE_VAAPI
+        "- AMD VAAPI\n"
+#endif
 #if HB_PROJECT_FEATURE_FDK_AAC
         "- fdk-aac\n"
 #endif
