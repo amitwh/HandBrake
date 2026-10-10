@@ -1644,6 +1644,52 @@ This is often the feature title of a DVD.</property>
                   </object>
                 </child>
                 <child>
+                  <object class="GtkLabel" id="join_label">
+                    <property name="xalign">0</property>
+                    <property name="label" translatable="yes">&lt;b&gt;Join:&lt;/b&gt;</property>
+                    <property name="use-markup">1</property>
+                    <layout>
+                      <property name="row">3</property>
+                      <property name="column">0</property>
+                    </layout>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkBox" id="join_box">
+                    <property name="halign">start</property>
+                    <property name="spacing">8</property>
+                    <layout>
+                      <property name="row">3</property>
+                      <property name="column">1</property>
+                    </layout>
+                    <child>
+                      <object class="GtkCheckButton" id="join_files_check">
+                        <property name="label" translatable="yes">Join selected files</property>
+                        <property name="tooltip-text" translatable="yes">Open two or more files together (multi-select in the source dialog) with this enabled to encode them as one joined title. Time ranges per input are available from the command line (--range).</property>
+                        <signal name="toggled" handler="join_files_toggled_cb" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkComboBoxText" id="join_copy_combo">
+                        <property name="tooltip-text" translatable="yes">Lossless stream copy joins the files without re-encoding when their parameters match; otherwise falls back to the preset encoder.</property>
+                        <items>
+                          <item id="auto" translatable="yes">Copy when possible</item>
+                          <item id="force" translatable="yes">Force copy</item>
+                          <item id="off" translatable="yes">Re-encode</item>
+                        </items>
+                        <signal name="changed" handler="join_copy_changed_cb" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="join_eligibility_label">
+                        <property name="halign">start</property>
+                        <property name="ellipsize">end</property>
+                        <property name="label" translatable="yes"></property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkLabel" id="preset_selection_label">
                     <property name="xalign">0</property>
                     <property name="label" translatable="yes">&lt;b&gt;Preset:&lt;/b&gt;</property>

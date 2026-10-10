@@ -1300,6 +1300,12 @@ static hb_handle_t * h_scan = NULL;
 static hb_handle_t * h_queue = NULL;
 static hb_handle_t * h_live = NULL;
 
+// Paths of the most recent join scan; NULL when the last scan was a
+// regular (non-join) scan.
+static char ** join_scan_paths = NULL;
+static int     join_scan_count = 0;
+static int     join_scan_copy = HB_JOIN_COPY_AUTO;
+
 hb_handle_t* ghb_scan_handle(void)
 {
     return h_scan;
@@ -3675,6 +3681,111 @@ ghb_backend_scan_list (GListModel *files, int titleindex, int preview_count, uin
     hb_status.scan.preview_count = 1;
     hb_status.scan.preview_cur = 0;
     hb_status.scan.progress = 0;
+}
+
+void
+ghb_backend_join_clear(void)
+{
+    if (join_scan_paths != NULL)
+    {
+        for (int i = 0; i < join_scan_count; i++)
+        {
+            g_free(join_scan_paths[i]);
+        }
+        g_free(join_scan_paths);
+        join_scan_paths = NULL;
+    }
+    join_scan_count = 0;
+}
+
+gboolean
+ghb_backend_scan_join (GListModel *files, int preview_count,
+                       uint64_t min_duration, int join_copy)
+{
+    int count = g_list_model_get_n_items(files);
+
+    if (g_list_model_get_item_type(files) != G_TYPE_FILE || count < 2)
+    {
+        return FALSE;
+    }
+    hb_list_t *join_inputs = hb_list_init();
+    for (guint i = 0; i < count; i++)
+    {
+        g_autoptr(GFile) file = g_list_model_get_item(files, i);
+        hb_join_input_t *input = calloc(1, sizeof(hb_join_input_t));
+        input->path = g_strdup(g_file_get_path(file));
+        input->title_id = (int)i + 1;
+        hb_list_add(join_inputs, input);
+    }
+    hb_scan_join(h_scan, join_inputs, preview_count, 1, min_duration, 0);
+
+    // Remember the join for job building when the scan completes
+    ghb_backend_join_clear();
+    join_scan_paths = calloc(count, sizeof(char*));
+    for (int i = 0; i < count; i++)
+    {
+        g_autoptr(GFile) file = g_list_model_get_item(files, i);
+        join_scan_paths[i] = g_strdup(g_file_get_path(file));
+    }
+    join_scan_count = count;
+    join_scan_copy = join_copy;
+
+    hb_join_input_t *input;
+    while ((input = hb_list_item(join_inputs, 0)) != NULL)
+    {
+        hb_list_rem(join_inputs, input);
+        hb_join_input_close(&input);
+    }
+    hb_list_close(&join_inputs);
+
+    hb_status.scan.state |= GHB_STATE_SCANNING;
+    hb_status.scan.title_count = 1;
+    hb_status.scan.title_cur = 0;
+    hb_status.scan.preview_count = 1;
+    hb_status.scan.preview_cur = 0;
+    hb_status.scan.progress = 0;
+    return TRUE;
+}
+
+gboolean
+ghb_backend_join_active(void)
+{
+    return join_scan_paths != NULL && join_scan_count > 0;
+}
+
+// Add JoinInputs/JoinCopy to a job's Source dict and, when lossless
+// copy applies, switch the video encoder accordingly.
+void
+ghb_backend_job_apply_join(GhbValue *job_dict, const hb_title_t *title)
+{
+    if (!ghb_backend_join_active() || job_dict == NULL)
+    {
+        return;
+    }
+    GhbValue *source_dict = ghb_dict_get(job_dict, "Source");
+    if (source_dict == NULL)
+    {
+        return;
+    }
+
+    GhbValue *join_list = ghb_array_new();
+    for (int i = 0; i < join_scan_count; i++)
+    {
+        GhbValue *input_dict = ghb_dict_new();
+        ghb_dict_set(input_dict, "Path", ghb_string_value(join_scan_paths[i]));
+        ghb_dict_set_int(input_dict, "Title", 1);
+        ghb_dict_set(input_dict, "Ranges", ghb_array_new());
+        ghb_array_append(join_list, input_dict);
+    }
+    ghb_dict_set(source_dict, "JoinInputs", join_list);
+    ghb_dict_set_int(source_dict, "JoinCopy", join_scan_copy);
+
+    GhbValue *video_dict = ghb_dict_get(job_dict, "Video");
+    if (join_scan_copy != HB_JOIN_COPY_OFF && title != NULL &&
+        title->join_eligible && video_dict != NULL)
+    {
+        ghb_dict_set_string(video_dict, "Encoder", "join-copy");
+    }
 }
 
 void

@@ -1500,6 +1500,24 @@ start_scan_list (signal_user_data_t *ud, GListModel *files, int title_id, int pr
     widget = ghb_builder_widget("sourcetoolmenubutton");
     gtk_widget_set_sensitive(widget, false);
     gboolean limit_max_duration = ghb_dict_get_bool(ud->prefs, "LimitMaxDuration");
+    gboolean join_files = ghb_dict_get_bool(ud->prefs, "JoinFiles");
+    if (join_files && g_list_model_get_n_items(files) > 1)
+    {
+        int join_copy = HB_JOIN_COPY_AUTO;
+        const char *copy_mode = ghb_dict_get_string(ud->prefs, "JoinCopyMode");
+        if (copy_mode != NULL && !strcmp(copy_mode, "force"))
+        {
+            join_copy = HB_JOIN_COPY_FORCE;
+        }
+        else if (copy_mode != NULL && !strcmp(copy_mode, "off"))
+        {
+            join_copy = HB_JOIN_COPY_OFF;
+        }
+        ghb_backend_scan_join(files, preview_count,
+            90000L * ghb_dict_get_int(ud->prefs, "MinTitleDuration"),
+            join_copy);
+        return;
+    }
     ghb_backend_scan_list(files, title_id, preview_count,
             90000L * ghb_dict_get_int(ud->prefs, "MinTitleDuration"),
             limit_max_duration ? 90000L * ghb_dict_get_int(ud->prefs, "MaxTitleDuration") : 0,
@@ -1882,6 +1900,23 @@ do_source_dialog(gboolean dir, signal_user_data_t *ud)
     ghb_file_chooser_set_initial_file(chooser, sourcename);
     ghb_file_chooser_show(chooser);
 }
+
+G_MODULE_EXPORT void
+join_files_toggled_cb(GtkCheckButton *check, signal_user_data_t *ud)
+{
+    ghb_dict_set(ud->prefs, "JoinFiles",
+                 ghb_boolean_value(gtk_check_button_get_active(check)));
+    ghb_prefs_store();
+}
+
+G_MODULE_EXPORT void
+join_copy_changed_cb(GtkComboBoxText *combo, signal_user_data_t *ud)
+{
+    const char *id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(combo));
+    ghb_dict_set_string(ud->prefs, "JoinCopyMode", id ? id : "auto");
+    ghb_prefs_store();
+}
+
 
 #if 0
 G_MODULE_EXPORT void
@@ -2698,6 +2733,31 @@ ghb_set_title_settings(signal_user_data_t *ud, GhbValue *settings)
         title_dict = hb_title_to_dict(ghb_scan_handle(), title_id);
         ghb_dict_set(settings, "Title", title_dict);
 
+
+        // Composite (join) titles: attach the join payload and surface
+        // the lossless eligibility
+        if (ghb_backend_join_active())
+        {
+            ghb_backend_job_apply_join(job_dict, title);
+            char *eligibility;
+            if (title->join_eligible)
+            {
+                eligibility = g_strdup_printf(_("Join: lossless copy possible (%d files)"),
+                                              hb_list_count(title->join_titles) + 1);
+            }
+            else
+            {
+                eligibility = g_strdup_printf(_("Join: will re-encode (%s)"),
+                                              title->join_eligibility_reason[0] ?
+                                              title->join_eligibility_reason : "inputs differ");
+            }
+            ghb_ui_update("join_eligibility_label", ghb_string_value(eligibility));
+            g_free(eligibility);
+        }
+        else
+        {
+            ghb_ui_update("join_eligibility_label", ghb_string_value(""));
+        }
         GhbValue *chapter_list = ghb_get_job_chapter_list(settings);
         gint num_chapters = ghb_array_len(chapter_list);
 
