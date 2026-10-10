@@ -38,7 +38,9 @@ typedef struct
     hb_list_t    * exclude_extensions;
 
     int            hw_decode;
-    
+
+    hb_list_t    * join_inputs;   // composite (join) scan; NULL otherwise
+
 } hb_scan_t;
 
 #define PREVIEW_READ_THRESH (200)
@@ -127,6 +129,502 @@ hb_thread_t * hb_scan_init( hb_handle_t * handle, volatile int * die,
     hb_set_state(handle, &state);
 
     return hb_thread_init( "scan", ScanFunc, data, HB_NORMAL_PRIORITY );
+}
+
+// Join (composite title) scan ---------------------------------------------
+
+static int join_nal_is_parameter_set(const uint8_t *header, int is_hevc)
+{
+    if (is_hevc)
+    {
+        switch ((header[0] >> 1) & 0x3F)
+        {
+            case 32: // VPS
+            case 33: // SPS
+            case 34: // PPS
+                return 1;
+            default:
+                return 0;
+        }
+    }
+    switch (header[0] & 0x1F)
+    {
+        case 7:  // SPS
+        case 8:  // PPS
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+// Canonicalize annex-B extradata down to its VPS/SPS/PPS NAL units so that
+// inputs differing only in start-code style, AUD or SEI still compare equal.
+// Returns NULL or a buffer with size 0 when no parameter sets were found
+// (e.g. mp4 avcC configuration records); callers must not treat that as
+// equality.
+static hb_data_t * join_annexb_canon(const uint8_t *data, int size, int is_hevc)
+{
+    hb_data_t    *canon = hb_data_init(size);
+    const uint8_t *end = data + size;
+    size_t        fill = 0;
+
+    if (canon == NULL || canon->bytes == NULL)
+    {
+        hb_data_close(&canon);
+        return NULL;
+    }
+    canon->size = 0;
+    while (data + 4 <= end)
+    {
+        const uint8_t *nal;
+        int            len;
+
+        if (data[0] == 0 && data[1] == 0 && data[2] == 1)
+        {
+            nal = data + 3;
+        }
+        else if (data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 1)
+        {
+            nal = data + 4;
+        }
+        else
+        {
+            data++;
+            continue;
+        }
+        for (len = 0; &nal[len] < end; len++)
+        {
+            if (len > 3 && nal[len - 4] == 0 && nal[len - 3] == 0 &&
+                nal[len - 2] == 0 && nal[len - 1] == 1)
+            {
+                len -= 4;
+                break;
+            }
+            if (len > 3 && nal[len - 3] == 0 && nal[len - 2] == 0 &&
+                nal[len - 1] == 1)
+            {
+                len -= 3;
+                break;
+            }
+        }
+        if (len <= 0)
+        {
+            break;
+        }
+        if (join_nal_is_parameter_set(nal, is_hevc) && fill + len <= size)
+        {
+            memcpy(&canon->bytes[fill], nal, len);
+            fill += len;
+        }
+        data = &nal[len];
+    }
+    canon->size = fill;
+    return canon;
+}
+
+static int join_extradata_equal(hb_data_t *first, hb_data_t *other,
+                                int is_hevc)
+{
+    if (first == NULL || other == NULL)
+    {
+        // Both missing is fine; one-sided means one input carries no
+        // in-band parameter sets (e.g. mp4 with codec config in the
+        // container) - fall back to byte equality of what we have.
+        if (first == NULL && other == NULL)
+        {
+            return 1;
+        }
+        if (first == NULL || other == NULL)
+        {
+            return first == NULL ? other->size == 0 : first->size == 0;
+        }
+    }
+    if (first->size == other->size &&
+        memcmp(first->bytes, other->bytes, first->size) == 0)
+    {
+        return 1;
+    }
+    {
+        hb_data_t *first_canon = join_annexb_canon(first->bytes, first->size,
+                                                   is_hevc);
+        hb_data_t *other_canon = join_annexb_canon(other->bytes, other->size,
+                                                   is_hevc);
+        // Both canonical forms must actually contain parameter sets;
+        // two non-annexb blobs that differ are NOT equal.
+        int        equal = first_canon != NULL && other_canon != NULL &&
+                           first_canon->size > 0 &&
+                           first_canon->size == other_canon->size &&
+                           memcmp(first_canon->bytes, other_canon->bytes,
+                                  first_canon->size) == 0;
+
+        hb_data_close(&first_canon);
+        hb_data_close(&other_canon);
+        return equal;
+    }
+}
+
+static int join_titles_compatible(hb_title_t *first, hb_title_t *other,
+                                  hb_data_t *first_ex, hb_data_t *other_ex,
+                                  char *reason, int reason_size)
+{
+#define JOIN_FAIL(...) do { \
+        snprintf(reason, reason_size, __VA_ARGS__); return 0; \
+    } while (0)
+
+    if (first->video_codec_name == NULL || other->video_codec_name == NULL ||
+        strcmp(first->video_codec_name, other->video_codec_name) != 0)
+    {
+        JOIN_FAIL("video codec %s vs %s",
+                  first->video_codec_name ? first->video_codec_name : "?",
+                  other->video_codec_name ? other->video_codec_name : "?");
+    }
+    if (first->geometry.width != other->geometry.width ||
+        first->geometry.height != other->geometry.height)
+    {
+        JOIN_FAIL("dimensions %dx%d vs %dx%d",
+                  first->geometry.width, first->geometry.height,
+                  other->geometry.width, other->geometry.height);
+    }
+    if (first->geometry.par.num != other->geometry.par.num ||
+        first->geometry.par.den != other->geometry.par.den)
+    {
+        JOIN_FAIL("pixel aspect ratio %d:%d vs %d:%d",
+                  first->geometry.par.num, first->geometry.par.den,
+                  other->geometry.par.num, other->geometry.par.den);
+    }
+    if (first->vrate.num != other->vrate.num ||
+        first->vrate.den != other->vrate.den)
+    {
+        JOIN_FAIL("frame rate %d/%d vs %d/%d",
+                  first->vrate.num, first->vrate.den,
+                  other->vrate.num, other->vrate.den);
+    }
+    if (first->pix_fmt != other->pix_fmt)
+    {
+        JOIN_FAIL("pixel format %d vs %d", first->pix_fmt, other->pix_fmt);
+    }
+    if (first->color_prim != other->color_prim ||
+        first->color_transfer != other->color_transfer ||
+        first->color_matrix != other->color_matrix)
+    {
+        JOIN_FAIL("color description differs");
+    }
+    if (first->mastering.has_primaries != other->mastering.has_primaries ||
+        first->mastering.has_luminance != other->mastering.has_luminance)
+    {
+        JOIN_FAIL("HDR mastering metadata presence differs");
+    }
+    if (first->coll.max_cll != other->coll.max_cll ||
+        first->coll.max_fall != other->coll.max_fall)
+    {
+        JOIN_FAIL("HDR content light level differs");
+    }
+
+    // Audio: track parity plus codec/rate. Channel layout is only known
+    // for titles whose previews were decoded (the first input), so
+    // channels are compared only when both sides carry the information;
+    // the copy encoder re-validates before running.
+    if (hb_list_count(first->list_audio) != hb_list_count(other->list_audio))
+    {
+        JOIN_FAIL("audio track count %d vs %d",
+                  hb_list_count(first->list_audio),
+                  hb_list_count(other->list_audio));
+    }
+    for (int ii = 0; ii < hb_list_count(first->list_audio); ii++)
+    {
+        hb_audio_t *audio_first = hb_list_item(first->list_audio, ii);
+        hb_audio_t *audio_other = hb_list_item(other->list_audio, ii);
+
+        if (audio_first->config.in.codec != audio_other->config.in.codec)
+        {
+            JOIN_FAIL("audio track %d codec differs", ii + 1);
+        }
+        if (audio_first->config.in.samplerate !=
+            audio_other->config.in.samplerate)
+        {
+            JOIN_FAIL("audio track %d sample rate differs", ii + 1);
+        }
+        if (audio_first->config.in.ch_layout != NULL &&
+            audio_other->config.in.ch_layout != NULL &&
+            hb_layout_get_discrete_channel_count(
+                audio_first->config.in.ch_layout) !=
+            hb_layout_get_discrete_channel_count(
+                audio_other->config.in.ch_layout))
+        {
+            JOIN_FAIL("audio track %d channel count differs", ii + 1);
+        }
+    }
+
+    if (!join_extradata_equal(
+            first_ex, other_ex,
+            strstr(first->video_codec_name ? first->video_codec_name : "",
+                   "265") != NULL ||
+            strstr(first->video_codec_name ? first->video_codec_name : "",
+                   "hevc") != NULL))
+    {
+        JOIN_FAIL("video parameter sets (SPS/PPS) differ");
+    }
+    return 1;
+
+#undef JOIN_FAIL
+}
+
+static void join_chapter_set_duration(hb_chapter_t *chapter, int64_t duration)
+{
+    int64_t seconds = duration / 90000;
+
+    chapter->duration = duration;
+    chapter->hours   = seconds / 3600;
+    chapter->minutes = (seconds % 3600) / 60;
+    chapter->seconds = seconds % 60;
+}
+
+static void JoinScanFunc(void *_data)
+{
+    hb_scan_t   *data = (hb_scan_t *) _data;
+    hb_title_t **titles;
+    hb_data_t  **extradata;
+    hb_title_t  *composite;
+    int          count = hb_list_count(data->join_inputs);
+    int          total_ranges = 0;
+    int64_t      total_duration = 0;
+    int          eligible = 1;
+    int          chapter_index = 1;
+    char         reason[256];
+    int          ii;
+
+    reason[0] = 0;
+    data->bd = NULL;
+    data->dvd = NULL;
+    data->stream = NULL;
+    titles = calloc(count, sizeof(hb_title_t *));
+    extradata = calloc(count, sizeof(hb_data_t *));
+
+    hb_log("scan: joining %d input(s)", count);
+
+    for (ii = 0; ii < count; ii++)
+    {
+        hb_join_input_t *input = hb_list_item(data->join_inputs, ii);
+        hb_stream_t     *stream;
+
+        UpdateState1(data, ii + 1);
+        titles[ii] = hb_batch_title_scan_single(data->h, input->path,
+                                                ii + 1);
+        if (titles[ii] == NULL)
+        {
+            hb_log("scan: join input %d (%s) could not be opened",
+                   ii + 1, input->path);
+            *data->die = 1;
+            goto finish;
+        }
+        if (input->range_count > 0)
+        {
+            for (int rr = 0; rr < input->range_count; rr++)
+            {
+                if (input->ranges[2 * rr] >= (int64_t)titles[ii]->duration)
+                {
+                    hb_log("scan: join range %d of input %d starts past "
+                           "end of file; dropping it", rr + 1, ii + 1);
+                    memmove(&input->ranges[2 * rr],
+                            &input->ranges[2 * (rr + 1)],
+                            (input->range_count - rr - 1) *
+                            2 * sizeof(int64_t));
+                    input->range_count--;
+                    rr--;
+                }
+                else if (input->ranges[2 * rr + 1] > (int64_t)titles[ii]->duration)
+                {
+                    hb_log("scan: join range %d of input %d extends past "
+                           "end of file; clamping stop point", rr + 1, ii + 1);
+                    input->ranges[2 * rr + 1] = titles[ii]->duration;
+                }
+            }
+        }
+
+        // Parameter sets for the eligibility check
+        stream = hb_stream_open(data->h, input->path, titles[ii], 1);
+        if (stream != NULL)
+        {
+            extradata[ii] = hb_stream_video_extradata(stream);
+            hb_stream_close(&stream);
+        }
+    }
+
+    // Decode previews for every input first: this refines each title's
+    // codec name, geometry and frame rate from the bitstream, which the
+    // eligibility matrix depends on. Only the first input's stored
+    // previews surface in the UI (v1 limitation).
+    for (ii = 0; ii < count; ii++)
+    {
+        if (DecodePreviews(data, titles[ii], 1) == 0 && data->hw_decode)
+        {
+            // Try again without the hardware decoder
+            data->hw_decode = 0;
+            DecodePreviews(data, titles[ii], 1);
+        }
+    }
+
+    for (ii = 1; ii < count; ii++)
+    {
+        if (!join_titles_compatible(titles[0], titles[ii], extradata[0],
+                                    extradata[ii], reason, sizeof(reason)))
+        {
+            hb_log("scan: join copy ineligible: input %d: %s", ii + 1,
+                   reason);
+            eligible = 0;
+        }
+    }
+
+    // Compose the composite title in place on the first input's title.
+    composite = titles[0];
+    {
+        hb_chapter_t *chapter;
+
+        while ((chapter = hb_list_item(composite->list_chapter, 0)) != NULL)
+        {
+            hb_list_rem(composite->list_chapter, chapter);
+            hb_chapter_close(&chapter);
+        }
+        for (ii = 0; ii < count; ii++)
+        {
+            hb_join_input_t *input = hb_list_item(data->join_inputs, ii);
+            int              range_count = input->range_count > 0 ?
+                                           input->range_count : 1;
+
+            for (int rr = 0; rr < range_count; rr++)
+            {
+                const char *path = input->path;
+                const char *base = strrchr(path, '/');
+                char        name[256];
+                int64_t     start = input->range_count > 0 ?
+                                    input->ranges[2 * rr] : 0;
+                int64_t     stop = input->range_count > 0 ?
+                                   input->ranges[2 * rr + 1] : 0;
+                int64_t     duration;
+
+                if (stop == 0)
+                {
+                    stop = titles[ii]->duration;
+                }
+                duration = stop - start;
+                if (duration <= 0)
+                {
+                    continue;
+                }
+                base = base != NULL ? base + 1 : path;
+                if (range_count > 1)
+                {
+                    snprintf(name, sizeof(name), "%s [%d]", base, rr + 1);
+                }
+                else
+                {
+                    snprintf(name, sizeof(name), "%s", base);
+                }
+                chapter = calloc(sizeof(hb_chapter_t), 1);
+                if (chapter == NULL)
+                {
+                    continue;
+                }
+                chapter->index = chapter_index++;
+                join_chapter_set_duration(chapter, duration);
+                hb_chapter_set_title(chapter, name);
+                hb_list_add(composite->list_chapter, chapter);
+                total_duration += duration;
+                total_ranges++;
+            }
+        }
+    }
+    composite->duration = total_duration;
+    composite->join_eligible = eligible;
+    snprintf(composite->join_eligibility_reason,
+             sizeof(composite->join_eligibility_reason), "%s", reason);
+    if (eligible)
+    {
+        hb_log("scan: join copy eligible (%d inputs, %d ranges)",
+               count, total_ranges);
+    }
+    else
+    {
+        hb_log("scan: join will re-encode (%s)", reason);
+    }
+
+    // Publish the composite as the only title of this scan.
+    while (hb_list_count(data->title_set->list_title) > 0)
+    {
+        hb_title_t *title = hb_list_item(data->title_set->list_title, 0);
+        hb_list_rem(data->title_set->list_title, title);
+        hb_title_close(&title);
+    }
+    hb_list_add(data->title_set->list_title, composite);
+    titles[0] = NULL; // ownership moved to the title set
+    free((char *)data->title_set->path);
+    data->title_set->path = strdup(
+        ((hb_join_input_t *)hb_list_item(data->join_inputs, 0))->path);
+
+finish:
+    for (ii = 0; ii < count; ii++)
+    {
+        if (titles[ii] != NULL)
+        {
+            hb_title_close(&titles[ii]);
+        }
+        hb_data_close(&extradata[ii]);
+    }
+    free(titles);
+    free(extradata);
+    hb_join_input_list_close(&data->join_inputs);
+    {
+        char *path;
+        while ((path = hb_list_item(data->paths, 0)) != NULL)
+        {
+            hb_list_rem(data->paths, path);
+            free(path);
+        }
+        hb_list_close(&data->paths);
+    }
+    hb_buffer_pool_free();
+    free(data);
+}
+
+hb_thread_t * hb_scan_join_init(hb_handle_t *handle, volatile int *die,
+                                hb_list_t *join_inputs,
+                                hb_title_set_t *title_set,
+                                int preview_count, int store_previews,
+                                uint64_t min_title_duration, int hw_decode)
+{
+    hb_scan_t * data = calloc( sizeof( hb_scan_t ), 1 );
+
+    data->h            = handle;
+    data->die          = die;
+    data->paths        = hb_list_init();
+    // UpdateState1 derives its progress denominator from the path list.
+    for (int ii = 0; ii < hb_list_count(join_inputs); ii++)
+    {
+        hb_join_input_t *input = hb_list_item(join_inputs, ii);
+        hb_list_add(data->paths, strdup(input->path));
+    }
+    data->join_inputs  = hb_join_input_list_copy(join_inputs);
+    data->title_index  = 1;
+    data->title_set    = title_set;
+    data->preview_count  = preview_count;
+    data->store_previews = store_previews;
+    data->min_title_duration = min_title_duration;
+    data->hw_decode    = hw_decode;
+
+    // Initialize scan state
+    hb_state_t state;
+    hb_get_state2(handle, &state);
+#define p state.param.scanning
+    state.state   = HB_STATE_SCANNING;
+    p.title_cur   = 1;
+    p.title_count = hb_list_count(data->join_inputs);
+    p.preview_cur = 0;
+    p.preview_count = 1;
+    p.progress = 0.0;
+#undef p
+    hb_set_state(handle, &state);
+
+    return hb_thread_init( "scan", JoinScanFunc, data, HB_NORMAL_PRIORITY );
 }
 
 static void ScanFunc( void * _data )

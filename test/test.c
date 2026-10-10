@@ -605,9 +605,10 @@ int main( int argc, char ** argv )
 
         if ( join_input_list != NULL )
         {
-            // WS3 Task 2 replaces this gate with hb_scan_join.
-            fprintf( stderr, "join scan not yet implemented\n" );
-            done_error = HB_ERROR_WRONG_INPUT;
+            hb_scan_join( h, join_input_list, preview_count, store_previews,
+                          min_title_duration * 90000LL, hw_decode );
+            EventLoop( h, preset_dict );
+            hb_value_free( &preset_dict );
             goto cleanup;
         }
 
@@ -5402,6 +5403,14 @@ PrepareJob(hb_handle_t *h, hb_title_t *title, hb_dict_t *preset_dict)
             hb_dict_set(join_dict, "Title", hb_value_int(1));
             hb_dict_set(join_dict, "Ranges", ranges);
             hb_value_array_append(join_list, join_dict);
+        }
+        if ( join_copy == HB_JOIN_COPY_FORCE && !title->join_eligible )
+        {
+            fprintf( stderr, "Error: --join-copy force refused: inputs are "
+                     "not eligible for lossless copy (%s)\n",
+                     title->join_eligibility_reason );
+            hb_value_free(&join_list);
+            return NULL;
         }
         hb_dict_set(source_dict, "JoinInputs", join_list);
         hb_dict_set(source_dict, "JoinCopy", hb_value_int(join_copy));

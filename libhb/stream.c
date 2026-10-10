@@ -1058,6 +1058,31 @@ void hb_stream_close( hb_stream_t ** _d )
  ***********************************************************************
  *
  **********************************************************************/
+// Returns a copy of the video stream's codec extradata (SPS/PPS etc.)
+// or NULL when the stream has none. Used by the join scan to compare
+// parameter sets across inputs.
+hb_data_t * hb_stream_video_extradata(hb_stream_t *stream)
+{
+    if (stream == NULL || stream->ffmpeg_ic == NULL)
+    {
+        return NULL;
+    }
+    for (int ii = 0; ii < stream->ffmpeg_ic->nb_streams; ii++)
+    {
+        AVStream *st = stream->ffmpeg_ic->streams[ii];
+        if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
+            st->codecpar->extradata != NULL &&
+            st->codecpar->extradata_size > 0)
+        {
+            hb_data_t *extradata = NULL;
+            hb_set_extradata(&extradata, st->codecpar->extradata,
+                             st->codecpar->extradata_size);
+            return extradata;
+        }
+    }
+    return NULL;
+}
+
 hb_title_t * hb_stream_title_scan(hb_stream_t *stream, hb_title_t * title)
 {
     if ( stream->hb_stream_type == ffmpeg )

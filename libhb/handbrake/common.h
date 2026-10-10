@@ -1417,6 +1417,10 @@ struct hb_title_s
 #define         HBTF_NO_IDR (1 << 0)
 #define         HBTF_SCAN_COMPLETE (1 << 1)
 #define         HBTF_RAW_VIDEO (1 << 2)
+
+    /* Composite-title (join) scan results */
+    int             join_eligible;              // lossless copy eligibility
+    char            join_eligibility_reason[256];
 };
 
 // Update win/CS/HandBrake.Interop/HandBrakeInterop/HbLib/hb_state_s.cs when changing this struct

@@ -51,6 +51,15 @@ void          hb_scan( hb_handle_t * h, hb_list_t * paths, int title_index,
                       hb_list_t * exclude_extensions, int hw_decode, int keep_duplicate_titles);
 
 void          hb_scan_stop( hb_handle_t * );
+
+/* hb_scan_join()
+   Scan the join input list (hb_join_input_t) and produce a single
+   composite title whose duration and chapters are the concatenation of
+   the kept ranges. Lossless copy eligibility is evaluated during the
+   scan and logged; see hb_title_t.join_eligible. */
+void          hb_scan_join( hb_handle_t * h, hb_list_t * join_inputs,
+                            int preview_count, int store_previews,
+                            uint64_t min_title_duration, int hw_decode );
 void          hb_force_rescan( hb_handle_t * );
 uint64_t      hb_first_duration( hb_handle_t * );
 

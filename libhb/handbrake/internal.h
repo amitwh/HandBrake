@@ -329,6 +329,11 @@ void          hb_batch_close( hb_batch_t ** _d );
 int           hb_batch_title_count( hb_batch_t * d );
 hb_title_t  * hb_batch_title_scan( hb_batch_t * d, int t );
 hb_title_t  * hb_batch_title_scan_single( hb_handle_t * h, char * filename, int t );
+hb_thread_t * hb_scan_join_init( hb_handle_t * handle, volatile int * die,
+                                 hb_list_t * join_inputs,
+                                 hb_title_set_t * title_set,
+                                 int preview_count, int store_previews,
+                                 uint64_t min_title_duration, int hw_decode );
 int           hb_is_valid_batch_path( const char * filename );
 
 /***********************************************************************
@@ -368,6 +373,7 @@ int           hb_bd_main_feature( hb_bd_t * d, hb_list_t * list_title );
 
 hb_stream_t * hb_bd_stream_open( hb_handle_t *h, hb_title_t *title );
 void hb_ts_stream_reset(hb_stream_t *stream);
+hb_data_t   * hb_stream_video_extradata( hb_stream_t * stream );
 hb_stream_t * hb_stream_open(hb_handle_t *h, const char * path,
                              hb_title_t *title, int scan);
 void		 hb_stream_close( hb_stream_t ** );

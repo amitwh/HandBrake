@@ -476,6 +476,31 @@ void hb_scan( hb_handle_t * h, hb_list_t * paths, int title_index,
                                    exclude_extensions, hw_decode, keep_duplicate_titles);
 }
 
+void hb_scan_join( hb_handle_t * h, hb_list_t * join_inputs,
+                   int preview_count, int store_previews,
+                   uint64_t min_title_duration, int hw_decode )
+{
+    hb_title_t * title;
+
+    h->scan_die = 0;
+
+    /* Clean up from previous scan */
+    hb_remove_previews( h );
+    while( ( title = hb_list_item( h->title_set.list_title, 0 ) ) )
+    {
+        hb_list_rem( h->title_set.list_title, title );
+        hb_title_close( &title );
+    }
+    free((char*)h->title_set.path);
+    h->title_set.path = NULL;
+
+    hb_log( "hb_scan: join of %d input(s)", hb_list_count( join_inputs ) );
+    h->scan_thread = hb_scan_join_init( h, &h->scan_die, join_inputs,
+                                        &h->title_set, preview_count,
+                                        store_previews, min_title_duration,
+                                        hw_decode );
+}
+
 void hb_force_rescan( hb_handle_t * h )
 {
     free((char*)h->title_set.path);
