@@ -5321,6 +5321,9 @@ hb_filter_object_t * hb_filter_get( int filter_id )
         case HB_FILTER_PAD:
             filter = &hb_filter_pad;
             break;
+        case HB_FILTER_SPEED:
+            filter = &hb_filter_speed;
+            break;
 
         case HB_FILTER_ROTATE:
             filter = &hb_filter_rotate;

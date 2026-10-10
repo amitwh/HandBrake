@@ -153,6 +153,10 @@ struct sync_common_s
     int             found_first_pts;
     int             flush;
 
+    // Playback speed (HB_FILTER_SPEED); subtitle timestamps are
+    // compressed to match the speed-adjusted audio and video
+    double          speed_factor;
+
     // SCR adjustments
     scr_t           scr[SCR_HASH_SZ];
     int             first_scr;
@@ -2316,6 +2320,17 @@ static int syncVideoInit( hb_work_object_t * w, hb_job_t * job)
     pv->common = calloc(1, sizeof(sync_common_t));
     if (pv->common == NULL) goto fail;
     pv->common->job = job;
+    pv->common->speed_factor = 1.0;
+    if (job->list_filter != NULL)
+    {
+        hb_filter_object_t * speed_filter =
+            hb_filter_find(job->list_filter, HB_FILTER_SPEED);
+        if (speed_filter != NULL && speed_filter->settings != NULL)
+        {
+            hb_dict_extract_double(&pv->common->speed_factor,
+                                   speed_filter->settings, "factor");
+        }
+    }
 
     // count number of streams we need
     pv->common->stream_count = 1;
@@ -3359,6 +3374,17 @@ static int syncSubtitleWork( hb_work_object_t * w, hb_buffer_t ** buf_in,
     else
     {
         *buf_in = NULL;
+    }
+
+    // Compress subtitle timestamps onto the sped-up timeline so they
+    // stay aligned with the adjusted audio and video.
+    if (pv->common->speed_factor != 1.0 && in->s.start != AV_NOPTS_VALUE)
+    {
+        in->s.start = (int64_t)(in->s.start / pv->common->speed_factor);
+        if (in->s.stop != AV_NOPTS_VALUE)
+        {
+            in->s.stop = (int64_t)(in->s.stop / pv->common->speed_factor);
+        }
     }
 
     QueueBuffer(pv->stream, in);

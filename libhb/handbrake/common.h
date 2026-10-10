@@ -1692,6 +1692,10 @@ enum
     HB_FILTER_BWDIF,
     HB_FILTER_BWDIF_VT,
     HB_FILTER_VFR,
+    // Playback speed runs after VFR: vfr normalizes the source to CFR
+    // first, then speed compresses the timeline so nothing downstream
+    // resamples back to the source rate.
+    HB_FILTER_SPEED,
     // Filters that must operate on the original source image are next
     HB_FILTER_DEBLOCK,
     HB_FILTER_DENOISE,

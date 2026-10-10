@@ -144,6 +144,14 @@ struct hb_work_private_s
     int                    drop_samples;
     uint64_t               downmix_mask;
 
+    // Playback speed (HB_FILTER_SPEED): pitch-preserving audio tempo
+    double                 speed_factor;
+    AVFilterGraph        * atempo_graph;
+    AVFilterContext      * atempo_src;
+    AVFilterContext      * atempo_sink;
+    int                    atempo_started;
+    double                 atempo_next_pts;   // sample counter, output clock
+
     AVFrame              * hw_frame;
     enum AVPixelFormat     hw_pix_fmt;
 
@@ -375,6 +383,17 @@ static int decavcodecaInit( hb_work_object_t * w, hb_job_t * job )
     pv->audio        = w->audio;
     pv->drop_samples = w->audio->config.in.encoder_delay;
     pv->next_pts     = (int64_t)AV_NOPTS_VALUE;
+    pv->speed_factor = 1.0;
+    if (job != NULL && job->list_filter != NULL)
+    {
+        hb_filter_object_t * speed_filter =
+            hb_filter_find(job->list_filter, HB_FILTER_SPEED);
+        if (speed_filter != NULL && speed_filter->settings != NULL)
+        {
+            hb_dict_extract_double(&pv->speed_factor,
+                                   speed_filter->settings, "factor");
+        }
+    }
     if (job)
         pv->title    = job->title;
     else
@@ -611,6 +630,12 @@ static void decavcodecClose( hb_work_object_t * w )
 
     if ( pv )
     {
+        if ( pv->atempo_graph != NULL )
+        {
+            avfilter_graph_free( &pv->atempo_graph );
+            pv->atempo_src = NULL;
+            pv->atempo_sink = NULL;
+        }
         closePrivData( &pv );
         w->private_data = NULL;
     }
@@ -2506,6 +2531,163 @@ static void log_decoder_downmix_mismatch(uint64_t downmix_mask, uint64_t decoded
                 req ? req : "(null)", got ? got : "(null)");
 }
 
+// Playback speed: build abuffer -> atempo [-> atempo] -> abuffersink from
+// the first decoded frame's parameters (the decoder context is not fully
+// negotiated before then). atempo's working range is 0.5 - 2.0, so
+// extreme factors chain two stages.
+static int atempo_graph_init(hb_work_private_t * pv, AVFrame * frame)
+{
+    const AVFilter * src_filter = avfilter_get_by_name("abuffer");
+    const AVFilter * sink_filter = avfilter_get_by_name("abuffersink");
+    char             args[512];
+    char             layout[64];
+    int              ret;
+
+    if (frame->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC)
+    {
+        AVChannelLayout default_ch_layout;
+        av_channel_layout_default(&default_ch_layout,
+                                  frame->ch_layout.nb_channels);
+        av_channel_layout_describe(&default_ch_layout, layout,
+                                   sizeof(layout));
+    }
+    else
+    {
+        av_channel_layout_describe(&frame->ch_layout, layout,
+                                   sizeof(layout));
+    }
+    {
+        int sample_rate = frame->sample_rate ?
+                          frame->sample_rate : pv->context->sample_rate;
+
+        // HB's audio timestamps are in 1/90000 units
+        snprintf(args, sizeof(args),
+                 "time_base=1/90000:sample_rate=%d:sample_fmt=%s:"
+                 "channel_layout=%s",
+                 sample_rate,
+                 av_get_sample_fmt_name(frame->format), layout);
+    }
+
+    pv->atempo_graph = avfilter_graph_alloc();
+    ret = avfilter_graph_create_filter(&pv->atempo_src, src_filter,
+                                       "src", args, NULL, pv->atempo_graph);
+    if (ret < 0)
+    {
+        goto fail;
+    }
+    ret = avfilter_graph_create_filter(&pv->atempo_sink, sink_filter,
+                                       "sink", NULL, NULL, pv->atempo_graph);
+    if (ret < 0)
+    {
+        goto fail;
+    }
+
+    {
+        AVFilterContext * last = pv->atempo_src;
+        double           factors[2] = { pv->speed_factor, 1.0 };
+        int              stages = 0;
+
+        if (pv->speed_factor > 2.0)
+        {
+            factors[0] = 2.0;
+            factors[1] = pv->speed_factor / 2.0;
+            stages = 2;
+        }
+        else if (pv->speed_factor < 0.5)
+        {
+            factors[0] = 0.5;
+            factors[1] = pv->speed_factor / 0.5;
+            stages = 2;
+        }
+        else
+        {
+            factors[0] = pv->speed_factor;
+            stages = 1;
+        }
+        for (int ii = 0; ii < stages; ii++)
+        {
+            const AVFilter * atempo_filter = avfilter_get_by_name("atempo");
+            AVFilterContext * atempo_ctx;
+            char             tempo[32];
+
+            snprintf(tempo, sizeof(tempo), "tempo=%.6f", factors[ii]);
+            ret = avfilter_graph_create_filter(&atempo_ctx, atempo_filter,
+                                               "atempo", tempo, NULL,
+                                               pv->atempo_graph);
+            if (ret < 0)
+            {
+                goto fail;
+            }
+            if (avfilter_link(last, 0, atempo_ctx, 0) < 0 ||
+                (ii == stages - 1 &&
+                 avfilter_link(atempo_ctx, 0, pv->atempo_sink, 0) < 0))
+            {
+                goto fail;
+            }
+            last = atempo_ctx;
+        }
+    }
+    if (avfilter_graph_config(pv->atempo_graph, NULL) < 0)
+    {
+        goto fail;
+    }
+    return 0;
+
+fail:
+    {
+        char errstr[80];
+        av_strerror(ret < 0 ? ret : AVERROR(EINVAL), errstr, sizeof(errstr));
+        hb_error("decavcodec: atempo graph init failed (%s); audio speed "
+                 "disabled", errstr);
+    }
+    avfilter_graph_free(&pv->atempo_graph);
+    pv->atempo_src = pv->atempo_sink = NULL;
+    return 1;
+}
+
+static void apply_audio_speed(hb_work_private_t * pv, AVFrame * frame)
+{
+    if (pv->speed_factor == 1.0 || frame->nb_samples <= 0)
+    {
+        return;
+    }
+    if (pv->atempo_graph == NULL)
+    {
+        if (atempo_graph_init(pv, frame))
+        {
+            pv->speed_factor = 1.0;
+            return;
+        }
+        hb_log("decavcodec: audio speed %.3fx via atempo",
+               pv->speed_factor);
+    }
+    // Output timestamps derive from the compressed output sample count
+    // (starting at the first source pts scaled by the factor) so the
+    // audio clock stays monotonic and aligned with the sped-up video.
+    // Units are HB audio pts (1/90000) throughout.
+    if (!pv->atempo_started)
+    {
+        pv->atempo_next_pts = frame->pts / pv->speed_factor;
+        pv->atempo_started = 1;
+    }
+    if (av_buffersrc_add_frame(pv->atempo_src, frame) < 0)
+    {
+        return;
+    }
+    av_frame_unref(frame);
+    // atempo emits one output frame per input frame
+    if (av_buffersink_get_frame(pv->atempo_sink, frame) < 0)
+    {
+        frame->nb_samples = 0;
+        frame->pts = AV_NOPTS_VALUE;
+        return;
+    }
+    frame->pts = (int64_t)(pv->atempo_next_pts + 0.5);
+    pv->atempo_next_pts += 90000.0 * frame->nb_samples /
+                           (frame->sample_rate ?
+                            frame->sample_rate : pv->context->sample_rate);
+}
+
 static void decodeAudio(hb_work_private_t *pv, packet_info_t * packet_info)
 {
     AVCodecContext * context = pv->context;
@@ -2555,6 +2737,25 @@ static void decodeAudio(hb_work_private_t *pv, packet_info_t * packet_info)
 
         hb_buffer_t * out;
         int           samplerate;
+
+        if (pv->speed_factor != 1.0)
+        {
+            if (pv->audio->config.out.codec & HB_ACODEC_PASS_FLAG)
+            {
+                static int warned = 0;
+                if (!warned)
+                {
+                    hb_log("decavcodec: audio speed requires audio "
+                           "re-encode; passthrough audio is unchanged");
+                    warned = 1;
+                }
+                pv->speed_factor = 1.0;
+            }
+            else
+            {
+                apply_audio_speed(pv, pv->frame);
+            }
+        }
 
         // libavcoded doesn't yet consistently set frame->sample_rate
         if (pv->frame->sample_rate != 0)

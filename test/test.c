@@ -206,6 +206,7 @@ static int      start_at_frame = 0;
 static int64_t  stop_at_pts    = 0;
 static int      stop_at_frame = 0;
 static char *   join = NULL;              // --join comma-separated paths
+static char *   speed = NULL;             // --speed factor
 static int      join_copy = -1;           // --join-copy off|auto|force
 static int    * join_range_index = NULL;  // --range 1-based input indices
 static int64_t *join_range_start = NULL;  // --range start pts
@@ -672,6 +673,7 @@ cleanup:
     free(encoder_profile);
     free(encoder_level);
     free(rotate);
+    free(speed);
     free(deblock);
     free(deblock_tune);
     free(detelecine);
@@ -1405,6 +1407,8 @@ static void ShowHelp(void)
 "       --join-copy <string>\n"
 "                           Lossless stream copy when all inputs match:\n"
 "                           \"off\", \"auto\" (default) or \"force\"\n"
+"       --speed <number>    Playback speed (0.25 - 4.0, default 1.0).\n"
+"                           Pitch-preserving audio, re-encode only.\n"
 "   -c, --chapters <string> Select chapters (e.g. \"1-3\" for chapters\n"
 "                           1 to 3 or \"3\" for chapter 3 only,\n"
 "                           default: all chapters)\n"
@@ -2308,6 +2312,7 @@ static int ParseOptions( int argc, char ** argv )
     #define JOIN                          337
     #define RANGE                         338
     #define JOIN_COPY                     339
+    #define SPEED                         340
 
     for( ;; )
     {
@@ -2339,6 +2344,7 @@ static int ParseOptions( int argc, char ** argv )
             { "join",        required_argument, NULL,           JOIN },
             { "range",       required_argument, NULL,          RANGE },
             { "join-copy",   required_argument, NULL,      JOIN_COPY },
+            { "speed",       required_argument, NULL,          SPEED },
             { "output",      required_argument, NULL,    'o' },
             { "optimize",    no_argument,       NULL,        'O' },
             { "no-optimize", no_argument,       &optimize, 0 },
@@ -3336,6 +3342,10 @@ static int ParseOptions( int argc, char ** argv )
                              "off, auto or force\n" );
                     return -1;
                 }
+                break;
+            case SPEED:
+                free( speed );
+                speed = strdup( optarg );
                 break;
             case ALLOWED_AUDIO_COPY:
             {
@@ -5126,6 +5136,12 @@ static hb_dict_t * PreparePreset(const char *preset_name)
     {
         hb_dict_set(preset, "PictureRotate", hb_value_string(rotate));
     }
+    if (speed != NULL)
+    {
+        char *speed_settings = hb_strdup_printf("factor=%s", speed);
+        hb_dict_set(preset, "PictureSpeed", hb_value_string(speed_settings));
+        free(speed_settings);
+    }
     if (pad_disable)
     {
         hb_dict_set(preset, "PicturePad", hb_value_string("off"));
@@ -5414,6 +5430,21 @@ PrepareJob(hb_handle_t *h, hb_title_t *title, hb_dict_t *preset_dict)
         }
         hb_dict_set(source_dict, "JoinInputs", join_list);
         hb_dict_set(source_dict, "JoinCopy", hb_value_int(join_copy));
+
+        // Speed changes timestamps, which lossless copy cannot do.
+        if ( speed != NULL && join_copy != HB_JOIN_COPY_OFF )
+        {
+            if ( join_copy == HB_JOIN_COPY_FORCE )
+            {
+                fprintf( stderr, "Error: --speed cannot be combined with "
+                         "--join-copy force; speed requires re-encoding\n" );
+                hb_value_free(&join_list);
+                return NULL;
+            }
+            fprintf( stderr, "join: --speed requires re-encode; lossless "
+                     "copy disabled\n" );
+            join_copy = HB_JOIN_COPY_OFF;
+        }
 
         if ( join_copy != HB_JOIN_COPY_OFF && title->join_eligible )
         {

@@ -297,6 +297,7 @@ void hb_avfilter_combine( hb_list_t * list)
             case HB_FILTER_COLORSPACE:
             case HB_FILTER_GRAYSCALE:
             case HB_FILTER_FORMAT:
+            case HB_FILTER_SPEED:
             {
                 settings = pv->avfilters;
             } break;

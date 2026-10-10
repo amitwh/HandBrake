@@ -1738,6 +1738,7 @@ int hb_preset_apply_filters(const hb_dict_t *preset, hb_dict_t *job_dict)
     // Rotate filter
     char *rotate = hb_value_get_string_xform(
                         hb_dict_get(preset, "PictureRotate"));
+    char *speed  = NULL;
     if (rotate != NULL)
     {
         filter_settings = hb_generate_filter_settings(HB_FILTER_ROTATE,
@@ -1762,6 +1763,32 @@ int hb_preset_apply_filters(const hb_dict_t *preset, hb_dict_t *job_dict)
         }
     }
     free(rotate);
+
+    // Speed filter
+    speed = hb_value_get_string_xform(hb_dict_get(preset, "PictureSpeed"));
+    if (speed != NULL)
+    {
+        filter_settings = hb_generate_filter_settings(HB_FILTER_SPEED,
+                                                      NULL, NULL, speed);
+        if (filter_settings == NULL)
+        {
+            hb_error("Invalid speed filter settings (%s)", speed);
+            return -1;
+        }
+        else if (!hb_dict_get_bool(filter_settings, "disable") &&
+                 hb_dict_get_double(filter_settings, "factor") != 1.0)
+        {
+            filter_dict = hb_dict_init();
+            hb_dict_set(filter_dict, "ID", hb_value_int(HB_FILTER_SPEED));
+            hb_dict_set(filter_dict, "Settings", filter_settings);
+            hb_add_filter2(filter_list, filter_dict);
+        }
+        else
+        {
+            hb_value_free(&filter_settings);
+        }
+    }
+    free(speed);
 
     // Grayscale filter
     if (hb_value_get_bool(hb_dict_get(preset, "VideoGrayScale")))
@@ -2221,6 +2248,38 @@ int hb_preset_apply_dimensions(hb_handle_t *h, int title_index,
             hb_value_free(&rotate_settings);
         }
         free(rotate);
+    }
+
+    // Speed filter
+    {
+        char *speed = hb_value_get_string_xform(
+                            hb_dict_get(preset, "PictureSpeed"));
+        if (speed != NULL)
+        {
+            hb_dict_t *speed_settings =
+                hb_generate_filter_settings(HB_FILTER_SPEED, NULL, NULL,
+                                            speed);
+            if (speed_settings == NULL)
+            {
+                hb_error("Invalid speed filter settings (%s)", speed);
+                free(speed);
+                return -1;
+            }
+            else if (!hb_dict_get_bool(speed_settings, "disable") &&
+                     hb_dict_get_double(speed_settings, "factor") != 1.0)
+            {
+                hb_dict_t *speed_dict = hb_dict_init();
+                hb_dict_set(speed_dict, "ID",
+                            hb_value_int(HB_FILTER_SPEED));
+                hb_dict_set(speed_dict, "Settings", speed_settings);
+                hb_add_filter2(filter_list, speed_dict);
+            }
+            else
+            {
+                hb_value_free(&speed_settings);
+            }
+        }
+        free(speed);
     }
 
     // Calculate default job geometry settings

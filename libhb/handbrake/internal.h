@@ -454,6 +454,7 @@ extern hb_filter_object_t hb_filter_detelecine;
 extern hb_filter_object_t hb_filter_comb_detect;
 extern hb_filter_object_t hb_filter_decomb;
 extern hb_filter_object_t hb_filter_yadif;
+extern hb_filter_object_t hb_filter_speed;
 extern hb_filter_object_t hb_filter_bwdif;
 extern hb_filter_object_t hb_filter_vfr;
 extern hb_filter_object_t hb_filter_deblock;
