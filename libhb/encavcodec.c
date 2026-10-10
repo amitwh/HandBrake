@@ -19,6 +19,7 @@
 #include "handbrake/nal_units.h"
 #include "handbrake/nvenc_common.h"
 #include "handbrake/vce_common.h"
+#include "handbrake/hwaccel_vaapi.h"
 #include "handbrake/extradata.h"
 #include "handbrake/qsv_common.h"
 
@@ -50,6 +51,11 @@ struct hb_work_private_s
 
 #if HB_PROJECT_FEATURE_QSV
     qsv_data_t         qsv_data;
+#endif
+
+#if HB_PROJECT_FEATURE_VAAPI
+    struct SwsContext   *sws_ctx;
+    AVFrame             *sw_frame;
 #endif
 
     struct {
@@ -326,6 +332,10 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
                     hb_log("encavcodecInit: H.264 (AMD VCE)");
                     codec_name = "h264_amf";
                     break;
+                case HB_VCODEC_FFMPEG_VAAPI_H264:
+                    hb_log("encavcodecInit: H.264 (VAAPI)");
+                    codec_name = "h264_vaapi";
+                    break;
                 case HB_VCODEC_FFMPEG_MF_H264:
                     hb_log("encavcodecInit: H.264 (MediaFoundation)");
                     codec_name = "h264_mf";
@@ -348,6 +358,11 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
                 case HB_VCODEC_FFMPEG_VCE_H265_10BIT:
                     hb_log("encavcodecInit: H.265 (AMD VCE)");
                     codec_name = "hevc_amf";
+                    break;
+                case HB_VCODEC_FFMPEG_VAAPI_H265:
+                case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
+                    hb_log("encavcodecInit: H.265 (VAAPI)");
+                    codec_name = "hevc_vaapi";
                     break;
                 case HB_VCODEC_FFMPEG_MF_H265:
                     hb_log("encavcodecInit: H.265 (MediaFoundation)");
@@ -372,6 +387,11 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
                 case HB_VCODEC_FFMPEG_VCE_AV1_10BIT:
                     hb_log("encavcodecInit: AV1 (AMD VCE)");
                     codec_name = "av1_amf";
+                    break;
+                case HB_VCODEC_FFMPEG_VAAPI_AV1:
+                case HB_VCODEC_FFMPEG_VAAPI_AV1_10BIT:
+                    hb_log("encavcodecInit: AV1 (VAAPI)");
+                    codec_name = "av1_vaapi";
                     break;
                 case HB_VCODEC_FFMPEG_QSV_AV1:
                 case HB_VCODEC_FFMPEG_QSV_AV1_10BIT:
@@ -805,6 +825,38 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
         }
 #endif
         context->pix_fmt = job->output_pix_fmt;
+#if HB_PROJECT_FEATURE_VAAPI
+        // Must come after the pix_fmt assignment above: pix_fmt must
+        // point at the VAAPI hardware format the vaapi encoders require.
+        if (hb_hwaccel_vaapi_is_encoder(job->vcodec) && !job->hw_device_ctx)
+        {
+            hb_hwaccel_hw_device_ctx_init(AV_HWDEVICE_TYPE_VAAPI,
+                                          job->hw_device_index,
+                                          (void **)&context->hw_device_ctx);
+            if (context->hw_device_ctx == NULL)
+            {
+                ret = 1;
+                goto done;
+            }
+            // VCN has no B-frame support in the VAAPI encoders
+            context->max_b_frames = 0;
+            // The vaapi encoders require a pre-created frames context
+            // with a real surface pool.
+            enum AVPixelFormat sw_fmt =
+                job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT ?
+                    AV_PIX_FMT_P010LE : AV_PIX_FMT_NV12;
+            context->hw_frames_ctx = hb_hwaccel_init_hw_frames_ctx(
+                context->hw_device_ctx, sw_fmt, AV_PIX_FMT_VAAPI,
+                context->width, context->height, 20);
+            if (context->hw_frames_ctx == NULL)
+            {
+                ret = 1;
+                goto done;
+            }
+            context->pix_fmt    = AV_PIX_FMT_VAAPI;
+            context->sw_pix_fmt = sw_fmt;
+        }
+#endif
     }
 
     context->sample_aspect_ratio.num = job->par.num;
@@ -1173,6 +1225,10 @@ void encavcodecClose( hb_work_object_t * w )
     }
     av_packet_free(&pv->pkt);
     hb_chapter_queue_close(&pv->chapter_queue);
+#if HB_PROJECT_FEATURE_VAAPI
+    sws_freeContext(pv->sws_ctx);
+    av_frame_free(&pv->sw_frame);
+#endif
     if( pv->context )
     {
         hb_deep_log( 2, "encavcodec: closing libavcodec" );
@@ -1367,6 +1423,68 @@ static void get_packets( hb_work_object_t * w, hb_buffer_list_t * list )
     }
 }
 
+#if HB_PROJECT_FEATURE_VAAPI
+// Upload a software frame to a VAAPI surface, converting to the frames
+// context sw_format (NV12 or P010) first — never rely on driver-side
+// format conversion.
+static int vaapi_upload_frame(AVCodecContext *context, struct SwsContext **sws_ctx,
+                              AVFrame **sw_frame, AVFrame *frame, AVFrame *hw_frame)
+{
+    AVHWFramesContext *frames_ctx = (AVHWFramesContext *)context->hw_frames_ctx->data;
+    int ret;
+
+    if (frame->format != frames_ctx->sw_format)
+    {
+        if (*sw_frame == NULL)
+        {
+            *sw_frame = av_frame_alloc();
+            (*sw_frame)->format = frames_ctx->sw_format;
+            (*sw_frame)->width  = frame->width;
+            (*sw_frame)->height = frame->height;
+            ret = av_frame_get_buffer(*sw_frame, 0);
+            if (ret < 0)
+            {
+                return ret;
+            }
+        }
+        *sws_ctx = sws_getCachedContext(*sws_ctx, frame->width, frame->height,
+                                        frame->format,
+                                        frame->width, frame->height,
+                                        frames_ctx->sw_format,
+                                        SWS_BILINEAR, NULL, NULL, NULL);
+        if (*sws_ctx == NULL)
+        {
+            return AVERROR(ENOMEM);
+        }
+        ret = av_frame_make_writable(*sw_frame);
+        if (ret < 0)
+        {
+            return ret;
+        }
+        sws_scale(*sws_ctx, (const uint8_t *const *)frame->data, frame->linesize,
+                  0, frame->height, (*sw_frame)->data, (*sw_frame)->linesize);
+        (*sw_frame)->width  = frame->width;
+        (*sw_frame)->height = frame->height;
+        frame = *sw_frame;
+    }
+
+    ret = av_hwframe_get_buffer(context->hw_frames_ctx, hw_frame, 0);
+    if (ret < 0)
+    {
+        hb_log("encavcodec: vaapi failed to get hwframe buffer");
+        return ret;
+    }
+    ret = av_hwframe_transfer_data(hw_frame, frame, 0);
+    if (ret < 0)
+    {
+        hb_log("encavcodec: vaapi failed to upload frame");
+        av_frame_unref(hw_frame);
+        return ret;
+    }
+    return 0;
+}
+#endif
+
 static void Encode( hb_work_object_t *w, hb_buffer_t **buf_in,
                     hb_buffer_list_t *list )
 {
@@ -1410,29 +1528,70 @@ static void Encode( hb_work_object_t *w, hb_buffer_t **buf_in,
     frame.pts = pv->frameno_in++;
     frame.duration = 0;
 
-    // For constant quality, setting the quality in AVCodecContext
-    // doesn't do the trick.  It must be set in the AVFrame.
-    frame.quality = pv->context->global_quality;
-
-    if (key_frame)
+#if HB_PROJECT_FEATURE_VAAPI
+    if (pv->context->hw_frames_ctx != NULL && frame.format != AV_PIX_FMT_VAAPI)
     {
-        frame.pict_type = AV_PICTURE_TYPE_I;
-        frame.flags = AV_FRAME_FLAG_KEY;
+        // Upload to a VAAPI surface and send that frame directly. Never
+        // copy an AVFrame between stack locals: unref frees extended_data
+        // whenever it differs from data, and after a struct copy it points
+        // into the other frame's dead stack.
+        AVFrame hw_frame = {{0}};
+        if (vaapi_upload_frame(pv->context, &pv->sws_ctx, &pv->sw_frame,
+                               &frame, &hw_frame) < 0)
+        {
+            av_frame_unref(&frame);
+            return;
+        }
+        hw_frame.pts       = frame.pts;
+        hw_frame.quality   = pv->context->global_quality;
+        if (key_frame)
+        {
+            hw_frame.pict_type = AV_PICTURE_TYPE_I;
+            hw_frame.flags     = AV_FRAME_FLAG_KEY;
+        }
+        else
+        {
+            hw_frame.pict_type = AV_PICTURE_TYPE_NONE;
+            hw_frame.flags     = 0;
+        }
+        av_frame_unref(&frame);
+
+        // Encode
+        ret = avcodec_send_frame(pv->context, &hw_frame);
+        av_frame_unref(&hw_frame);
+        if (ret < 0)
+        {
+            hb_log("encavcodec: avcodec_send_frame failed");
+            return;
+        }
     }
     else
+#endif
     {
-        frame.pict_type = AV_PICTURE_TYPE_NONE;
-        frame.flags = 0;
-    }
+        // For constant quality, setting the quality in AVCodecContext
+        // doesn't do the trick.  It must be set in the AVFrame.
+        frame.quality = pv->context->global_quality;
 
-    // Encode
-    ret = avcodec_send_frame(pv->context, &frame);
-    av_frame_unref(&frame);
+        if (key_frame)
+        {
+            frame.pict_type = AV_PICTURE_TYPE_I;
+            frame.flags = AV_FRAME_FLAG_KEY;
+        }
+        else
+        {
+            frame.pict_type = AV_PICTURE_TYPE_NONE;
+            frame.flags = 0;
+        }
 
-    if (ret < 0)
-    {
-        hb_log("encavcodec: avcodec_send_frame failed");
-        return;
+        // Encode
+        ret = avcodec_send_frame(pv->context, &frame);
+        av_frame_unref(&frame);
+
+        if (ret < 0)
+        {
+            hb_log("encavcodec: avcodec_send_frame failed");
+            return;
+        }
     }
 
     // Write stats

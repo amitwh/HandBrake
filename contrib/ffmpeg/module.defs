@@ -98,6 +98,11 @@ ifneq (,$(filter $(HOST.system),linux freebsd))
     ifneq (,$(findstring 1,$(FEATURE.qsv)$(FEATURE.vaapi)))
         FFMPEG.CONFIGURE.extra += --enable-vaapi
         FFMPEG.CONFIGURE.extra += --disable-xlib
+        ifeq (1,$(FEATURE.vaapi))
+            FFMPEG.CONFIGURE.extra += --enable-encoder=h264_vaapi
+            FFMPEG.CONFIGURE.extra += --enable-encoder=hevc_vaapi
+            FFMPEG.CONFIGURE.extra += --enable-encoder=av1_vaapi
+        endif
     else
         FFMPEG.CONFIGURE.extra += --disable-vaapi
     endif
