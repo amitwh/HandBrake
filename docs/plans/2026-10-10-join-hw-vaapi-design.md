@@ -38,7 +38,7 @@ with full support for mixed sources as fallback.
 | Extension points | avfilter bridge (`libhb/avfilter.c`, `hbavfilter.c`); generic hw-frames helpers (`libhb/hwaccel.c:272`, consumed `encavcodec.c:782`) |
 | 5600G silicon (VCN 3.0) | H.264 + HEVC encode & decode, VP9 decode; **no AV1 encode/decode** (that is VCN 4+/RDNA3) |
 
-## Workstream 1 — Native deb packaging (first: everything depends on the build pipeline)
+## Workstream 1 — Native deb packaging (first: everything depends on the build pipeline) — DONE
 
 **Approach:** modernize the existing in-tree debian packaging rather than inventing new.
 
@@ -188,3 +188,6 @@ N files × 1 range = pure join; N files × M ranges = full editor. Existing
 Branch `feature/join-edit-vaapi` off tag `1.11.2`. Order: **WS1 → WS2 → WS3 core (CLI) →
 3.5 filters → 3.6 GUI**. Each stage ends with installable, verified debs. Keep `master`
 tracking upstream untouched.
+
+**Workstream status:** WS1 ✅ Complete (2026-10-10) — debs built, installed, smoke-tested on
+Ubuntu 26.04. WS2, WS3 pending.
