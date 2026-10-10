@@ -49,8 +49,9 @@ with full support for mixed sources as fallback.
   (ffmpeg, x264/x265, SVT-AV1, jansson, dvdnav, libbluray etc. remain bundled via contrib —
   upstream design, kept.)
 - `pkg/linux/debian/rules`: keep dh flow (top-level configure already drives the meson gtk
-  sub-build); pass feature flags (`--enable-vaapi --enable-vce`) into configure; `binary`
-  installs both CLI and ghb.
+  sub-build); pass feature flags into configure — **`--enable-vce` in WS1** (the
+  `--enable-vaapi` flag does not exist until WS2 creates it; WS2 extends both the rules line
+  and the configure invocation); `binary` installs both CLI and ghb.
 - `pkg/linux/debian/changelog`: new entry `1.11.2-1~fork1` for `resolute`.
 - Packages: `handbrake-cli`, `handbrake-gtk` (Architecture: `amd64`).
 
