@@ -14,7 +14,7 @@
 
 - Repo: `~/src/HandBrake` (clone of `git@github.com:amitwh/HandBrake.git`), branch `feature/join-edit-vaapi`, base tag `1.11.2`. Never touch `master`.
 - Target: Ubuntu 26.04 (resolute), native `amd64` only. GTK: latest distro GTK4 (floor 4.6; no version pinning beyond that).
-- Bundled contrib libraries remain the source of ffmpeg/x264/x265/SVT-AV1/jansson/dvdnav/dvdread/libbluray/ogg/theora/vorbis — never switch to system versions.
+- Respect the repo's existing system/contrib split (system: x264, LAME, vpx, opus, speex, theora, vorbis, ogg, jansson, gtk4, libass, turbojpeg, libxml2; contrib: ffmpeg, x265, SVT-AV1, dav1d, zimg, dvdnav/dvdread, libbluray, amf, nvenc, libvpl).
 - Feature flag in WS1: `--enable-vce` only. **`--enable-vaapi` does not exist yet** (it is created in WS2) — passing it now aborts `./configure` with an unknown-option error.
 - WS1's VCE encoders will not initialize at runtime on this Mesa-only machine (AMF needs `amfrt64` from AMDGPU-PRO) — expected and harmless; usable HW encode arrives in WS2 (VAAPI).
 - Changes are surgical: only files under `pkg/linux/debian/` may be modified. No other tree changes.

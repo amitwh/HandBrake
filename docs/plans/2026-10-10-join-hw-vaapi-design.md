@@ -44,10 +44,14 @@ with full support for mixed sources as fallback.
 
 - `pkg/linux/debian/control`: replace Build-Depends with the real set:
   `debhelper-compat (= 13), meson, ninja-build, cmake, nasm, autoconf, automake, libtool,
-  pkg-config, python3, wget, gettext, libbz2-dev, zlib1g-dev, libgtk-4-dev, libglib2.0-dev,
+  pkg-config, python3, wget, gettext, libbz2-dev, zlib1g-dev, liblzma-dev, libnuma-dev,
+  libx264-dev, libmp3lame-dev, libvpx-dev, libopus-dev, libspeex-dev, libtheora-dev,
+  libvorbis-dev, libogg-dev, libjansson-dev, libgtk-4-dev, libglib2.0-dev,
   libass-dev, libturbojpeg0-dev, libva-dev, libdrm-dev`.
-  (ffmpeg, x264/x265, SVT-AV1, jansson, dvdnav, libbluray etc. remain bundled via contrib —
-  upstream design, kept.)
+  (Corrected 2026-10-10: since 1.10 upstream takes x264, LAME, vpx, opus, speex, theora,
+  vorbis, ogg and jansson from the **system**, not contrib — `README.Debian`'s
+  "everything bundled" text is stale. Still bundled via contrib: ffmpeg, x265, SVT-AV1,
+  dav1d, zimg, libass, dvdnav/dvdread, libbluray.)
 - `pkg/linux/debian/rules`: keep dh flow (top-level configure already drives the meson gtk
   sub-build); pass feature flags into configure — **`--enable-vce` in WS1** (the
   `--enable-vaapi` flag does not exist until WS2 creates it; WS2 extends both the rules line
