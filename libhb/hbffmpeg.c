@@ -9,6 +9,7 @@
 
 #include "handbrake/handbrake.h"
 #include "handbrake/hbffmpeg.h"
+#include "handbrake/vaapi_common.h"
 #include "libavutil/cpu.h"
 
 static int get_frame_type(int type)
@@ -641,7 +642,7 @@ AVAmbientViewingEnvironment hb_ambient_hb_to_ff(hb_ambient_viewing_environment_m
 
 AVDOVIDecoderConfigurationRecord hb_dovi_hb_to_ff(hb_dovi_conf_t dovi)
 {
-    AVDOVIDecoderConfigurationRecord ff_dovi;
+    AVDOVIDecoderConfigurationRecord ff_dovi = {0};
 
     ff_dovi.dv_version_major = dovi.dv_version_major;
     ff_dovi.dv_version_minor = dovi.dv_version_minor;
@@ -671,10 +672,72 @@ hb_dovi_conf_t hb_dovi_ff_to_hb(AVDOVIDecoderConfigurationRecord dovi)
     return hb_dovi;
 }
 
-int hb_ff_mixdown_ch_xlat(AVChannelLayout *channel_layout, int hb_mixdown, int *downmix_mode)
+AVSphericalMapping hb_spherical_hb_to_ff(hb_spherical_mapping_t spherical_mapping)
 {
-    uint64_t layout = hb_ff_mixdown_xlat(hb_mixdown, downmix_mode);
-    return av_channel_layout_from_mask(channel_layout, layout);
+    AVSphericalMapping ff_spherical_mapping;
+
+    ff_spherical_mapping.projection = spherical_mapping.projection;
+    ff_spherical_mapping.yaw        = spherical_mapping.yaw;
+    ff_spherical_mapping.pitch      = spherical_mapping.pitch;
+    ff_spherical_mapping.roll       = spherical_mapping.roll;
+    ff_spherical_mapping.bound_left   = spherical_mapping.bound_left;
+    ff_spherical_mapping.bound_top    = spherical_mapping.bound_top;
+    ff_spherical_mapping.bound_right  = spherical_mapping.bound_right;
+    ff_spherical_mapping.bound_bottom = spherical_mapping.bound_bottom;
+    ff_spherical_mapping.padding      = spherical_mapping.padding;
+
+    return ff_spherical_mapping;
+}
+
+hb_spherical_mapping_t hb_spherical_ff_to_hb(AVSphericalMapping spherical_mapping)
+{
+    hb_spherical_mapping_t hb_spherical_mapping;
+
+    hb_spherical_mapping.projection = spherical_mapping.projection;
+    hb_spherical_mapping.yaw        = spherical_mapping.yaw;
+    hb_spherical_mapping.pitch      = spherical_mapping.pitch;
+    hb_spherical_mapping.roll       = spherical_mapping.roll;
+    hb_spherical_mapping.bound_left   = spherical_mapping.bound_left;
+    hb_spherical_mapping.bound_top    = spherical_mapping.bound_top;
+    hb_spherical_mapping.bound_right  = spherical_mapping.bound_right;
+    hb_spherical_mapping.bound_bottom = spherical_mapping.bound_bottom;
+    hb_spherical_mapping.padding      = spherical_mapping.padding;
+
+    return hb_spherical_mapping;
+}
+
+AVStereo3D hb_stereo_3d_hb_to_ff(hb_stereo_3d_t stereo_3d)
+{
+    AVStereo3D ff_stereo_3d;
+
+    ff_stereo_3d.type        = stereo_3d.type;
+    ff_stereo_3d.flags       = stereo_3d.flags;
+    ff_stereo_3d.view        = stereo_3d.view;
+    ff_stereo_3d.primary_eye = stereo_3d.primary_eye;
+    ff_stereo_3d.baseline    = stereo_3d.baseline;
+    ff_stereo_3d.horizontal_disparity_adjustment.num = stereo_3d.horizontal_disparity_adjustment.num;
+    ff_stereo_3d.horizontal_disparity_adjustment.den = stereo_3d.horizontal_disparity_adjustment.den;
+    ff_stereo_3d.horizontal_field_of_view.num = stereo_3d.horizontal_field_of_view.num;
+    ff_stereo_3d.horizontal_field_of_view.den = stereo_3d.horizontal_field_of_view.den;
+
+    return ff_stereo_3d;
+}
+
+hb_stereo_3d_t hb_stereo_3d_ff_to_hb(AVStereo3D stereo_3d)
+{
+    hb_stereo_3d_t hb_stereo_3d;
+
+    hb_stereo_3d.type        = stereo_3d.type;
+    hb_stereo_3d.flags       = stereo_3d.flags;
+    hb_stereo_3d.view        = stereo_3d.view;
+    hb_stereo_3d.primary_eye = stereo_3d.primary_eye;
+    hb_stereo_3d.baseline    = stereo_3d.baseline;
+    hb_stereo_3d.horizontal_disparity_adjustment.num = stereo_3d.horizontal_disparity_adjustment.num;
+    hb_stereo_3d.horizontal_disparity_adjustment.den = stereo_3d.horizontal_disparity_adjustment.den;
+    hb_stereo_3d.horizontal_field_of_view.num = stereo_3d.horizontal_field_of_view.num;
+    hb_stereo_3d.horizontal_field_of_view.den = stereo_3d.horizontal_field_of_view.den;
+
+    return hb_stereo_3d;
 }
 
 uint64_t hb_ff_mixdown_xlat(int hb_mixdown, int *downmix_mode)
@@ -717,6 +780,18 @@ uint64_t hb_ff_mixdown_xlat(int hb_mixdown, int *downmix_mode)
             ff_layout = AV_CH_LAYOUT_STEREO;
             break;
 
+        case HB_AMIXDOWN_3POINT0:
+            ff_layout = AV_CH_LAYOUT_SURROUND;
+            break;
+
+        case HB_AMIXDOWN_4POINT0:
+            ff_layout = AV_CH_LAYOUT_4POINT0;
+            break;
+
+        case HB_AMIXDOWN_QUAD:
+            ff_layout = AV_CH_LAYOUT_2_2;
+            break;
+
         case HB_AMIXDOWN_5POINT1:
             ff_layout = AV_CH_LAYOUT_5POINT1;
             break;
@@ -729,7 +804,7 @@ uint64_t hb_ff_mixdown_xlat(int hb_mixdown, int *downmix_mode)
             ff_layout = AV_CH_LAYOUT_7POINT1;
             break;
 
-        case HB_AMIXDOWN_5_2_LFE:
+        case HB_AMIXDOWN_7POINT1_SDDS:
             ff_layout = AV_CH_LAYOUT_7POINT1_WIDE;
             break;
 
@@ -845,4 +920,114 @@ int hb_av_can_use_zscale(enum AVPixelFormat pix_fmt,
     }
 
     return 0;
+}
+
+int hb_avcodec_test_encoder_available(int encoder)
+{
+    int err;
+    enum AVPixelFormat fmt = AV_PIX_FMT_YUV420P;
+    const char *codec_name;
+    const AVCodec *codec;
+    switch (encoder)
+    {
+#if HB_PROJECT_FEATURE_NVENC
+        case HB_VCODEC_FFMPEG_NVENC_H264:
+            codec_name = "h264_nvenc";
+            fmt = AV_PIX_FMT_YUV420P;
+            break;
+        case HB_VCODEC_FFMPEG_NVENC_H265:
+            codec_name = "hevc_nvenc";
+            fmt = AV_PIX_FMT_YUV420P;
+            break;
+#endif
+#if HB_PROJECT_FEATURE_VAAPI
+        case HB_VCODEC_FFMPEG_VAAPI_H264:
+            codec_name = "h264_vaapi";
+            fmt = AV_PIX_FMT_VAAPI;
+            break;
+        case HB_VCODEC_FFMPEG_VAAPI_H265:
+            codec_name = "hevc_vaapi";
+            fmt = AV_PIX_FMT_VAAPI;
+            break;
+        case HB_VCODEC_FFMPEG_VAAPI_AV1:
+            codec_name = "av1_vaapi";
+            fmt = AV_PIX_FMT_VAAPI;
+            break;
+        case HB_VCODEC_FFMPEG_VAAPI_VP8:
+            codec_name = "vp8_vaapi";
+            fmt = AV_PIX_FMT_VAAPI;
+            break;
+        case HB_VCODEC_FFMPEG_VAAPI_VP9:
+            codec_name = "vp9_vaapi";
+            fmt = AV_PIX_FMT_VAAPI;
+            break;
+#endif
+        default:
+            // FIXME: Add other supported avcodec encoder!
+            hb_log("hb_avcodec_test_encoder_available encoder=0x%X: Not supported yet", encoder);
+            return 0;
+    }
+    codec = avcodec_find_encoder_by_name(codec_name);
+    if (NULL == codec)
+    {
+        hb_log("hb_avcodec_test_encoder_available encoder=0x%X, codec=%s: Not available", encoder, codec_name);
+        return 0;
+    }
+    err = hb_avcodec_test_encoder(codec, fmt);
+    hb_log("hb_avcodec_test_encoder_available encoder=0x%X, codec=%s: err %d", encoder, codec_name, err);
+    return 0 == err;
+}
+
+int hb_avcodec_test_encoder(const AVCodec *codec, enum AVPixelFormat fmt)
+{
+    int err, res = 0;
+    AVDictionary *av_opts = NULL;
+    AVCodecContext *context = NULL;
+    if (NULL == codec)
+    {
+        return -1;
+    }
+    context = avcodec_alloc_context3(codec);
+    if (NULL == context)
+    {
+        res = -2;
+        goto close;
+    }
+    // setting all fields marked: 'encoding: MUST be set by user'
+    context->time_base.num = 1;
+    context->time_base.den = 25;
+    context->width = 640;
+    context->height = 480;
+    // deprecated: context->me_method = 1;
+    // setting other fields as required via testing
+    context->pix_fmt = fmt;
+
+#if HB_PROJECT_FEATURE_VAAPI
+    if (AV_PIX_FMT_VAAPI == fmt)
+    {
+        if ((err = hb_vaapi_avcodec_set_hwframe_ctx(context, 0, 20)) < 0)
+        {
+            hb_log("Failed to set the VAAPI hwframe_ctx. Error code: %s", av_err2str(err));
+            res = -4;
+            goto close;
+        }
+    }
+#endif
+
+    av_dict_set(&av_opts, "b", "2M", 0);
+    if ((err = avcodec_open2(context, codec, &av_opts)) < 0)
+    {
+        res = -3;
+        goto close;
+    }
+close:
+    if (NULL != av_opts)
+    {
+        av_dict_free(&av_opts);
+    }
+    if (NULL != context)
+    {
+        avcodec_free_context(&context);
+    }
+    return res;
 }

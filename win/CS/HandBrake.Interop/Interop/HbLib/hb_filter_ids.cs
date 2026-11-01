@@ -11,7 +11,8 @@ namespace HandBrake.Interop.Interop.HbLib
         HB_FILTER_INVALID = 0,
         HB_FILTER_FIRST = 1,
 
-        HB_FILTER_PRE_VT,
+        HB_FILTER_ADAPTER,
+        HB_FILTER_ADAPTER_VT,
         // First, filters that may change the framerate (drop or dup frames)
         HB_FILTER_DETELECINE,
         HB_FILTER_COMB_DETECT,
@@ -24,8 +25,10 @@ namespace HandBrake.Interop.Interop.HbLib
         HB_FILTER_VFR,
         // Filters that must operate on the original source image are next
         HB_FILTER_DEBLOCK,
+        HB_FILTER_DEBAND,
         HB_FILTER_DENOISE,
         HB_FILTER_HQDN3D = HB_FILTER_DENOISE,
+        HB_FILTER_BM3D,
         HB_FILTER_NLMEANS,
         HB_FILTER_CHROMA_SMOOTH,
         HB_FILTER_CHROMA_SMOOTH_VT,

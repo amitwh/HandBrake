@@ -843,7 +843,7 @@ hb_stream_open(hb_handle_t *h, const char *path, hb_title_t *title, int scan)
         return NULL;
     }
 
-    hb_stream_t *d = calloc( sizeof( hb_stream_t ), 1 );
+    hb_stream_t *d = calloc( 1, sizeof( hb_stream_t ) );
     if ( d == NULL )
     {
         fclose( f );
@@ -951,7 +951,7 @@ hb_stream_t * hb_bd_stream_open( hb_handle_t *h, hb_title_t *title )
 {
     int ii;
 
-    hb_stream_t *d = calloc( sizeof( hb_stream_t ), 1 );
+    hb_stream_t *d = calloc( 1, sizeof( hb_stream_t ) );
     if ( d == NULL )
     {
         hb_error( "hb_bd_stream_open: can't allocate space for stream state" );
@@ -1092,8 +1092,8 @@ hb_title_t * hb_stream_title_scan(hb_stream_t *stream, hb_title_t * title)
     title->type = HB_STREAM_TYPE;
 
     // Copy part of the stream path to the title name
-    char * name = stream->path;
-    char * sep  = hb_strr_dir_sep(stream->path);
+    const char * name = stream->path;
+    const char * sep  = hb_strr_dir_sep(stream->path);
     if (sep)
         name = sep + 1;
     title->name = strdup(name);
@@ -1143,7 +1143,7 @@ hb_title_t * hb_stream_title_scan(hb_stream_t *stream, hb_title_t * title)
 
     // One Chapter
     hb_chapter_t * chapter;
-    chapter = calloc( sizeof( hb_chapter_t ), 1 );
+    chapter = calloc( 1, sizeof( hb_chapter_t ) );
     hb_chapter_set_title( chapter, "Chapter 1" );
     chapter->index = 1;
     chapter->duration = title->duration;
@@ -2010,7 +2010,7 @@ static void pes_add_subtitle_to_title(
             return;
     }
 
-    hb_subtitle_t *subtitle = calloc( sizeof( hb_subtitle_t ), 1 );
+    hb_subtitle_t *subtitle = calloc( 1, sizeof( hb_subtitle_t ) );
     iso639_lang_t * lang;
 
     subtitle->track        = idx;
@@ -2183,7 +2183,7 @@ static void pes_add_audio_to_title(
             return;
     }
 
-    hb_audio_t *audio = calloc( sizeof( hb_audio_t ), 1 );
+    hb_audio_t *audio = calloc( 1, sizeof( hb_audio_t ) );
 
     audio->id = id;
     audio->config.in.reg_desc = stream->reg_desc;
@@ -3097,13 +3097,13 @@ static int parse_pes_header(
         int hdr_len = pes_info->header_len = bits_get(bb, 8);
         pes_info->header_len += bb->pos >> 3;
 
-        bitbuf_t bb_hdr;
-        bits_clone(&bb_hdr, bb, hdr_len);
-
-        if ( bits_bytes_left(&bb_hdr) < hdr_len )
+        if ( bits_bytes_left(bb) < hdr_len )
         {
             return 0;
         }
+
+        bitbuf_t bb_hdr;
+        bits_clone(&bb_hdr, bb, hdr_len);
 
         int expect = (!!has_pts) * 5 + (has_pts & 0x01) * 5 + has_escr * 6 +
                      has_esrate * 3 + has_dsm + has_copy_info + has_crc * 2 +
@@ -5149,7 +5149,7 @@ hb_buffer_t * hb_ts_decode_pkt( hb_stream_t *stream, const uint8_t * pkt,
                 if ((pes[7] >> 6) != 0)
                 {
                     // if we have a dts use it otherwise use the pts
-                    // We simulate a psuedo-PCR here by sampling a timestamp
+                    // We simulate a pseudo-PCR here by sampling a timestamp
                     // about every 600ms.
                     int64_t timestamp;
                     timestamp = pes_timestamp(pes + (pes[7] & 0x40 ? 14 : 9));
@@ -6064,8 +6064,8 @@ static hb_title_t *ffmpeg_title_scan( hb_stream_t *stream, hb_title_t *title )
     title->type = HB_FF_STREAM_TYPE;
 
     // Copy part of the stream path to the title name
-    char * name = stream->path;
-    char * sep = hb_strr_dir_sep(stream->path);
+    const char * name = stream->path;
+    const char * sep = hb_strr_dir_sep(stream->path);
     if (sep)
         name = sep + 1;
     title->name = strdup(name);
@@ -6170,9 +6170,36 @@ static hb_title_t *ffmpeg_title_scan( hb_stream_t *stream, hb_title_t *title )
                         title->dovi = hb_dovi_ff_to_hb(*dovi);
                         break;
                     }
+                    case AV_PKT_DATA_STEREO3D:
+                    {
+                        AVStereo3D *stereo = (AVStereo3D *)sd.data;
+                        title->stereo_3d = hb_stereo_3d_ff_to_hb(*stereo);
+                        break;
+                    }
+                    case AV_PKT_DATA_SPHERICAL:
+                    {
+                        AVSphericalMapping *spherical_mapping = (AVSphericalMapping *)sd.data;
+                        title->spherical_mapping = hb_spherical_ff_to_hb(*spherical_mapping);
+                        break;
+                    }
                     default:
                         break;
                 }
+            }
+
+            if (codecpar->codec_id == AV_CODEC_ID_H264 &&
+                hb_h264_extradata_has_mvc(codecpar->extradata,
+                                          codecpar->extradata_size))
+            {
+                title->multiview = HB_MULTIVIEW_MVC;
+            }
+
+            // MV-HEVC (e.g. Apple spatial video), the demuxer flags streams
+            // with an 'lhvC' layered HEVC configuration as multilayer
+            if (codecpar->codec_id == AV_CODEC_ID_HEVC &&
+                (st->disposition & AV_DISPOSITION_MULTILAYER))
+            {
+                title->multiview = HB_MULTIVIEW_MVHEVC;
             }
 
             title->video_codec        = WORK_DECAVCODECV;
@@ -6238,7 +6265,7 @@ static hb_title_t *ffmpeg_title_scan( hb_stream_t *stream, hb_title_t *title )
                 // beginning, we need to an additional entry
                 if (i == 0 && ic->nb_chapters > 1 && m->start != 0)
                 {
-                    hb_chapter_t *chapter = calloc(sizeof(hb_chapter_t), 1);
+                    hb_chapter_t *chapter = calloc(1, sizeof(hb_chapter_t));
                     chapter->index = nb_chapters++;
 
                     chapter->duration = ic->chapters[0]->start * 90000 *
@@ -6259,7 +6286,7 @@ static hb_title_t *ffmpeg_title_scan( hb_stream_t *stream, hb_title_t *title )
                 hb_chapter_t      * chapter;
                 int64_t             end;
 
-                chapter = calloc(sizeof(hb_chapter_t), 1);
+                chapter = calloc(1, sizeof(hb_chapter_t));
                 chapter->index = nb_chapters++;
 
                 /* AVChapter.end is not guaranteed to be set.
@@ -6344,7 +6371,7 @@ static hb_title_t *ffmpeg_title_scan( hb_stream_t *stream, hb_title_t *title )
     {
         // Need at least one chapter
         hb_chapter_t * chapter;
-        chapter = calloc( sizeof( hb_chapter_t ), 1 );
+        chapter = calloc( 1, sizeof( hb_chapter_t ) );
         chapter->index = 1;
         chapter->duration = title->duration;
         chapter->hours = title->hours;

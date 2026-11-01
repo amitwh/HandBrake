@@ -96,7 +96,7 @@ hb_thread_t * hb_scan_init( hb_handle_t * handle, volatile int * die,
                             hb_list_t * exclude_extensions, int hw_decode,
                             int keep_duplicate_titles)
 {
-    hb_scan_t * data = calloc( sizeof( hb_scan_t ), 1 );
+    hb_scan_t * data = calloc( 1, sizeof( hb_scan_t ) );
 
     data->h            = handle;
     data->die          = die;
@@ -108,7 +108,15 @@ hb_thread_t * hb_scan_init( hb_handle_t * handle, volatile int * die,
     data->store_previews = store_previews;
     data->min_title_duration = min_duration;
     data->max_title_duration = max_duration;
-     
+
+    // Discard previews if user disables them.
+    if (data->preview_count == 0)
+        data->store_previews = 0;
+
+    // Do at least 3 previews for any case.
+    if (data->preview_count < 3)
+        data->preview_count = 3;
+
     data->crop_threshold_frames = crop_threshold_frames;
     data->crop_threshold_pixels = crop_threshold_pixels;
     data->exclude_extensions    = hb_string_list_copy(exclude_extensions);
@@ -1149,6 +1157,107 @@ static hb_buffer_t * read_buf(hb_scan_t * data, hb_stream_t * stream)
     return NULL;
 }
 
+static void close_video_filter(hb_filter_object_t **filter)
+{
+    if (filter == NULL || *filter == NULL)
+    {
+        return;
+    }
+
+    hb_filter_object_t *_filter = *filter;
+    _filter->close(_filter);
+    hb_fifo_close(&_filter->fifo_in);
+    hb_fifo_close(&_filter->fifo_out);
+    hb_filter_close(filter);
+}
+
+static int reinit_video_filter(hb_filter_object_t **filter, hb_work_info_t vid_info, hb_work_info_t prev_vid_info, int rotation)
+{
+    if (prev_vid_info.geometry.width == vid_info.geometry.width &&
+        prev_vid_info.geometry.height == vid_info.geometry.height &&
+        *filter != NULL)
+    {
+        return 0;
+    }
+
+    close_video_filter(filter);
+
+    hb_filter_init_t init;
+    memset(&init, 0, sizeof(init));
+
+    init.time_base.num = 1;
+    init.time_base.den = 90000;
+    init.pix_fmt = AV_PIX_FMT_YUV420P;
+    init.hw_pix_fmt = AV_PIX_FMT_NONE;
+
+    init.color_prim     = vid_info.color_prim;
+    init.color_transfer = vid_info.color_transfer;
+    init.color_matrix   = vid_info.color_matrix;
+    init.color_range    = AVCOL_RANGE_MPEG;
+    init.chroma_location = vid_info.chroma_location;
+    init.geometry = vid_info.geometry;
+    init.geometry.par.num = 1;
+    init.geometry.par.den = 1;
+    memset(init.crop, 0, sizeof(int[4]));
+    init.vrate = vid_info.rate;
+
+    hb_filter_object_t *_filter = hb_filter_init(HB_FILTER_ADAPTER);
+    _filter->settings = hb_dict_init();
+
+    hb_dict_set_int(_filter->settings, "rotation", rotation);
+
+    if (_filter->init != NULL && _filter->init(_filter, &init))
+    {
+        hb_error("scan: failure to initialize filter '%s'", _filter->name);
+        hb_filter_close(&_filter);
+        return 1;
+    }
+
+    if (_filter->post_init != NULL && _filter->post_init(_filter, NULL))
+    {
+        hb_log("scan: failure to initialise filter '%s'", _filter->name);
+        hb_filter_close(&_filter);
+        return 1;
+    }
+
+    // Set up filter fifos
+    _filter->fifo_in  = hb_fifo_init(1, 1);
+    _filter->fifo_out = hb_fifo_init(1, 1);
+
+    *filter = _filter;
+
+    return 0;
+}
+
+static hb_buffer_t * filter_buf(hb_filter_object_t *filter, hb_buffer_t *in)
+{
+    // Feed frame to filter chain
+    hb_fifo_push(filter->fifo_in, in);
+
+    in = hb_fifo_get_wait(filter->fifo_in);
+    if (in == NULL)
+    {
+        return NULL;
+    }
+
+    // Process the frame through filter
+    hb_buffer_t *out = NULL;
+    filter->status = filter->work(filter, &in, &out);
+    if (in != NULL)
+    {
+        hb_buffer_close(&in);
+    }
+    if (out != NULL)
+    {
+        hb_fifo_push(filter->fifo_out, out);
+    }
+
+    // Retrieve the filtered frame
+    out = hb_fifo_get(filter->fifo_out);
+
+    return out;
+}
+
 /***********************************************************************
  * DecodePreviews
  ***********************************************************************
@@ -1170,6 +1279,9 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
     int                cc_wait = 10;
     int                frames;
     hb_stream_t      * stream = NULL;
+    hb_work_object_t * vid_decoder = NULL;
+    void             * hw_device_ctx = NULL;
+    hb_filter_object_t * filter = NULL;
     info_list_t      * info_list;
     int                abort_audio = 0;
 
@@ -1206,22 +1318,15 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
     if (data->bd == NULL && data->dvd == NULL && stream == NULL)
     {
         hb_error("Can't open stream!");
-        free(info_list);
-        crop_record_free(crops);
-        hb_stream_close(&stream);
-        return 0;
+        goto finish;
     }
 
     if (title->video_codec == WORK_NONE)
     {
         hb_error("No video decoder set!");
-        free(info_list);
-        crop_record_free(crops);
-        hb_stream_close(&stream);
-        return 0;
+        goto finish;
     }
 
-    void *hw_device_ctx = NULL;
     hb_hwaccel_t *hwaccel = hb_get_hwaccel(data->hw_decode);
 
     if (hwaccel &&
@@ -1231,7 +1336,7 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
         hb_hwaccel_hw_device_ctx_init(hwaccel->type, -1, &hw_device_ctx);
     }
 
-    hb_work_object_t *vid_decoder = hb_get_work(data->h, title->video_codec);
+    vid_decoder = hb_get_work(data->h, title->video_codec);
     vid_decoder->codec_param = title->video_codec_param;
     vid_decoder->hw_device_ctx = hw_device_ctx;
     vid_decoder->hw_accel = hwaccel;
@@ -1240,13 +1345,10 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
     if (vid_decoder->init(vid_decoder, NULL))
     {
         hb_error("Decoder init failed!");
-        free(info_list);
-        crop_record_free(crops);
-        free( vid_decoder );
-        hb_stream_close(&stream);
-        hb_hwaccel_hw_device_ctx_close(&hw_device_ctx);
-        return 0;
+        goto finish;
     }
+
+    hb_work_info_t prev_vid_info = {0};
 
     for( i = 0; i < data->preview_count; i++ )
     {
@@ -1256,13 +1358,8 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
 
         if ( *data->die )
         {
-            free( info_list );
-            crop_record_free( crops );
-            vid_decoder->close( vid_decoder );
-            free( vid_decoder );
-            hb_stream_close(&stream);
-            hb_hwaccel_hw_device_ctx_close(&hw_device_ctx);
-            return 0;
+            npreviews = 0;
+            goto finish;
         }
         if (data->bd)
         {
@@ -1337,6 +1434,14 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
         while (vid_decoder->frame_count < PREVIEW_READ_THRESH ||
               (!AllAudioOK(title) && packets < 10000))
         {
+            if (*data->die)
+            {
+                hb_buffer_close(&last_vid_buf);
+                hb_buffer_close(&vid_buf);
+                npreviews = 0;
+                goto finish;
+            }
+
             if ((buf = read_buf(data, stream)) == NULL)
             {
                 // If we reach EOF and no audio, don't continue looking for
@@ -1468,14 +1573,29 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
             continue;
         }
 
-        if (vid_info.geometry.width  != vid_buf->f.width ||
-            vid_info.geometry.height != vid_buf->f.height)
+        int buf_width  = vid_buf->f.width;
+        int buf_height = vid_buf->f.height;
+        if (title->rotation == HB_ROTATION_90 ||
+            title->rotation == HB_ROTATION_270)
+        {
+            buf_width  = vid_buf->f.height;
+            buf_height = vid_buf->f.width;
+        }
+
+        if (vid_info.geometry.width  != buf_width ||
+            vid_info.geometry.height != buf_height)
         {
             hb_log( "scan: video geometry information does not match buffer" );
             hb_buffer_close( &vid_buf );
             continue;
         }
         remember_info( info_list, &vid_info );
+
+        /* Convert to YUV420 */
+        reinit_video_filter(&filter, vid_info, prev_vid_info, title->rotation);
+        prev_vid_info = vid_info;
+
+        vid_buf = filter_buf(filter, vid_buf);
 
         /* Check preview for interlacing artifacts */
         if( hb_detect_comb( vid_buf, 10, 30, 9, 10, 30, 9 ) )
@@ -1583,8 +1703,10 @@ skip_preview:
 
     vid_decoder->close( vid_decoder );
     free( vid_decoder );
+    vid_decoder = NULL;
 
     hb_hwaccel_hw_device_ctx_close(&hw_device_ctx);
+    close_video_filter(&filter);
 
     if (stream != NULL)
     {
@@ -1904,12 +2026,35 @@ skip_preview:
             hb_log("scan: hdr10+ dynamic metadata found");
         }
 
+        if (title->spherical_mapping.projection > HB_SPHERICAL_UNSET)
+        {
+            hb_log("scan: spherical mapping: %s",
+                   av_spherical_projection_name(title->spherical_mapping.projection));
+        }
+
+        if (title->stereo_3d.type > HB_STEREO3D_UNSET)
+        {
+            hb_log("scan: stereo 3d: %s",
+                   av_stereo3d_type_name(title->stereo_3d.type));
+        }
+
+        if (title->multiview == HB_MULTIVIEW_MVC)
+        {
+            hb_log("scan: multiview: H.264 MVC, only the base view will be decoded (2D)");
+        }
+        else if (title->multiview == HB_MULTIVIEW_MVHEVC)
+        {
+            hb_log("scan: multiview: MV-HEVC, only the base view will be decoded (2D)");
+        }
+
         if (title->video_decode_support != HB_DECODE_SW)
         {
-            hb_log("scan: supported video decoders:%s%s%s",
+            hb_log("scan: supported video decoders:%s%s%s%s%s",
                    !(title->video_decode_support & HB_DECODE_SW)      ? "" : " avcodec",
                    !(title->video_decode_support & HB_DECODE_QSV)     ? "" : " qsv",
-                   !(title->video_decode_support & HB_DECODE_HWACCEL) ? "" : " hwaccel");
+                   !(title->video_decode_support & HB_DECODE_AMFDEC)  ? "" : " amfdec",
+                   !(title->video_decode_support & HB_DECODE_NVDEC)   ? "" : " nvdec",
+                   !(title->video_decode_support & HB_DECODE_VIDEOTOOLBOX)  ? "" : " videotoolbox");
         }
 
         if (interlaced_preview_count && interlaced_preview_count >= (npreviews / 2))
@@ -1923,15 +2068,26 @@ skip_preview:
             title->detected_interlacing = 0;
         }
     }
-    crop_record_free( crops );
-    free( info_list );
 
-    hb_buffer_list_close(&list_es);
-
+finish:
     if (data->bd)
       hb_bd_stop( data->bd );
     if (data->dvd)
       hb_dvd_stop( data->dvd );
+
+    if (vid_decoder)
+    {
+        vid_decoder->close(vid_decoder);
+        free(vid_decoder);
+    }
+    hb_hwaccel_hw_device_ctx_close(&hw_device_ctx);
+    close_video_filter(&filter);
+    hb_stream_close(&stream);
+
+    crop_record_free(crops);
+    free(info_list);
+
+    hb_buffer_list_close(&list_es);
 
     return npreviews;
 }

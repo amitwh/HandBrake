@@ -1,3 +1,16 @@
+handbrake (1.12.0~git20261101-1~fork1) resolute; urgency=medium
+
+  * Merge upstream master through fa48b48a4 (2026-11-01): FFmpeg 9.0.2,
+    new audio filters (declick, denoise, compressor, limiter, loudnorm),
+    3.0/4.0/Quad/7.1-SDDS mixdowns, AMF hardware decode, and upstream's
+    own VAAPI encode (now canonical — replaces the fork's implementation
+    and adds VP8/VP9 VAAPI encoders).
+  * Fork differentiators retained: VAAPI hardware decode (AMD/Intel/Mesa),
+    smart join with lossless copy mode, trim ranges, speed/watermark/
+    timestamp-burn filters, GTK4 join mode.
+
+ -- Amit Haridas <amitwh@users.noreply.github.com>  Sun, 01 Nov 2026 22:45:00 +0530
+
 handbrake (1.11.2-1~fork3) resolute; urgency=medium
 
   * Smart join: lossless stream-copy when inputs match (verified

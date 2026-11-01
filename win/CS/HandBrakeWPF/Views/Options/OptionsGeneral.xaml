@@ -27,6 +27,7 @@
 
         <options:UpdateCheckConverter x:Key="UpdateCheckConverter" />
         <options:ThemeSettingConverter x:Key="ThemeSettingConverter" />
+        <options:ThemeImageTypeConverter x:Key="ThemeImageTypeConverter" />
         <options:PresetDisplayModeConverter x:Key="PresetDisplayModeConverter" />
         <options:PresetUiTypeConverter x:Key="PresetUiTypeConverter" />
         <options:RightToLeftConverter x:Key="RightToLeftConverter" />
@@ -70,6 +71,13 @@
                 <TextBlock Text="{x:Static Properties:Resources.OptionsView_RequiresRestart}" Margin="5,0,0,0" />
             </StackPanel>
 
+            <StackPanel Orientation="Horizontal"  Margin="20,0,0,5" Visibility="Collapsed">
+                <TextBlock Text="{x:Static Properties:Resources.OptionsView_ThemeImageType}"  Margin="0,0,0,0" VerticalAlignment="Center"/>
+                <ComboBox ItemsSource="{Binding ThemeImageTypes, Converter={StaticResource ThemeImageTypeConverter}}" SelectedItem="{Binding SelectedThemeImageType, Converter={StaticResource ThemeImageTypeConverter}}" 
+                                      Margin="5,0,0,0" HorizontalAlignment="Left" Width="150" />
+                <TextBlock Text="{x:Static Properties:Resources.OptionsView_RequiresRestart}" Margin="5,0,0,0" />
+            </StackPanel>
+
             <StackPanel Orientation="Vertical" Margin="20,5,0,0">
                 <CheckBox Content="{x:Static Properties:Resources.Options_MinimiseTray}" IsChecked="{Binding MinimiseToTray}" />
                 <CheckBox Content="{x:Static Properties:Resources.Options_ClearCompleted}" IsChecked="{Binding ClearQueueOnEncodeCompleted}" />
@@ -87,7 +95,7 @@
             <StackPanel Orientation="Horizontal"  Margin="20,0,0,5">
                 <TextBlock Text="{x:Static Properties:Resources.OptionsView_PresetUiType}"  Margin="0,0,0,0" VerticalAlignment="Center"/>
                 <ComboBox ItemsSource="{Binding PresetUiTypes, Converter={StaticResource PresetUiTypeConverter}}" SelectedItem="{Binding SelectedPresetUiType, Converter={StaticResource PresetUiTypeConverter}}" 
-                          Margin="5,0,0,0" HorizontalAlignment="Left" Width="150" ToolTip="{x:Static Properties:ResourcesTooltips.OptionsView_PresetDisplayModes}" />
+                          Margin="5,0,0,0" HorizontalAlignment="Left" Width="150" ToolTip="{x:Static Properties:ResourcesTooltips.OptionsView_PresetDisplayToolbarModes}" />
 
             </StackPanel>
 

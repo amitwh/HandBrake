@@ -54,7 +54,7 @@ static void filter_loop( void * );
  */
 hb_thread_t * hb_work_init( hb_list_t * jobs, volatile int * die, hb_error_code * error, hb_job_t ** job )
 {
-    hb_work_t * work = calloc( sizeof( hb_work_t ), 1 );
+    hb_work_t * work = calloc( 1, sizeof( hb_work_t ) );
 
     work->jobs      = jobs;
     work->current_job = job;
@@ -309,24 +309,9 @@ hb_work_object_t* hb_video_encoder(hb_handle_t *h, int vcodec)
             w->codec_param = AV_CODEC_ID_AV1;
             break;
 #endif
-#if HB_PROJECT_FEATURE_VAAPI
-        case HB_VCODEC_FFMPEG_VAAPI_H264:
-            w = hb_get_work(h, WORK_ENCAVCODEC);
-            w->codec_param = AV_CODEC_ID_H264;
-            break;
-        case HB_VCODEC_FFMPEG_VAAPI_H265:
-        case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
-            w = hb_get_work(h, WORK_ENCAVCODEC);
-            w->codec_param = AV_CODEC_ID_HEVC;
-            break;
-        case HB_VCODEC_FFMPEG_VAAPI_AV1:
-        case HB_VCODEC_FFMPEG_VAAPI_AV1_10BIT:
-            w = hb_get_work(h, WORK_ENCAVCODEC);
-            w->codec_param = AV_CODEC_ID_AV1;
-            break;
-#endif
 #if HB_PROJECT_FEATURE_NVENC
         case HB_VCODEC_FFMPEG_NVENC_H264:
+        case HB_VCODEC_FFMPEG_NVENC_H264_10BIT:
             w = hb_get_work(h, WORK_ENCAVCODEC);
             w->codec_param = AV_CODEC_ID_H264;
             break;
@@ -339,6 +324,28 @@ hb_work_object_t* hb_video_encoder(hb_handle_t *h, int vcodec)
         case HB_VCODEC_FFMPEG_NVENC_AV1_10BIT:
             w = hb_get_work(h, WORK_ENCAVCODEC);
             w->codec_param = AV_CODEC_ID_AV1;
+            break;
+#endif
+#if HB_PROJECT_FEATURE_VAAPI
+        case HB_VCODEC_FFMPEG_VAAPI_H264:
+            w = hb_get_work(h, WORK_ENCAVCODEC);
+            w->codec_param = AV_CODEC_ID_H264;
+            break;
+        case HB_VCODEC_FFMPEG_VAAPI_H265:
+            w = hb_get_work(h, WORK_ENCAVCODEC);
+            w->codec_param = AV_CODEC_ID_HEVC;
+            break;
+        case HB_VCODEC_FFMPEG_VAAPI_AV1:
+            w = hb_get_work(h, WORK_ENCAVCODEC);
+            w->codec_param = AV_CODEC_ID_AV1;
+            break;
+        case HB_VCODEC_FFMPEG_VAAPI_VP8:
+            w = hb_get_work(h, WORK_ENCAVCODEC);
+            w->codec_param = AV_CODEC_ID_VP8;
+            break;
+        case HB_VCODEC_FFMPEG_VAAPI_VP9:
+            w = hb_get_work(h, WORK_ENCAVCODEC);
+            w->codec_param = AV_CODEC_ID_VP9;
             break;
 #endif
 #ifdef __APPLE__
@@ -429,6 +436,49 @@ hb_work_object_t* hb_audio_encoder(hb_handle_t *h, int codec)
         return hb_get_work(h, WORK_ENCAVCODEC_AUDIO);
     }
     return NULL;
+}
+
+void hb_display_filters_info(hb_list_t *list_filter, const char *indent)
+{
+    if (hb_list_count(list_filter))
+    {
+        hb_log("%s+ %s", indent, hb_list_count(list_filter) > 1 ? "filters" : "filter");
+        for (int j = 0; j < hb_list_count(list_filter); j++)
+        {
+            hb_filter_object_t *filter = hb_list_item(list_filter, j);
+            if (filter->aliased && global_verbosity_level < 2)
+            {
+                continue;
+            }
+            char *settings = hb_filter_settings_string(filter->id,
+                                                       filter->settings);
+            if (settings != NULL && strlen(settings) > 0)
+                hb_log("%s   + %s (%s)", indent, filter->name, settings);
+            else
+                hb_log("%s   + %s (default settings)", indent, filter->name);
+            free(settings);
+            if (filter->info)
+            {
+                hb_filter_info_t *info;
+
+                info = filter->info(filter);
+                if (info != NULL &&
+                    info->human_readable_desc != NULL &&
+                    info->human_readable_desc[0] != 0)
+                {
+                    char *line, * pos = NULL;
+                    char *tmp = strdup(info->human_readable_desc);
+                    for (line = strtok_r(tmp,  "\n", &pos); line != NULL;
+                         line = strtok_r(NULL, "\n", &pos))
+                    {
+                        hb_log("%s     + %s", indent, line);
+                    }
+                    free(tmp);
+                }
+                hb_filter_info_close(&info);
+            }
+        }
+    }
 }
 
 /**
@@ -554,46 +604,8 @@ void hb_display_job_info(hb_job_t *job)
         hb_log( "     + bitrate %d kbps", title->video_bitrate / 1000 );
     }
 
-    // Filters can modify dimensions.  So show them first.
-    if( hb_list_count( job->list_filter ) )
-    {
-        hb_log("   + %s", hb_list_count( job->list_filter) > 1 ? "filters" : "filter" );
-        for( i = 0; i < hb_list_count( job->list_filter ); i++ )
-        {
-            hb_filter_object_t * filter = hb_list_item( job->list_filter, i );
-            if (filter->aliased && global_verbosity_level < 2)
-            {
-                continue;
-            }
-            char * settings = hb_filter_settings_string(filter->id,
-                                                        filter->settings);
-            if (settings != NULL)
-                hb_log("     + %s (%s)", filter->name, settings);
-            else
-                hb_log("     + %s (default settings)", filter->name);
-            free(settings);
-            if (filter->info)
-            {
-                hb_filter_info_t * info;
-
-                info = filter->info(filter);
-                if (info != NULL &&
-                    info->human_readable_desc != NULL &&
-                    info->human_readable_desc[0] != 0)
-                {
-                    char * line, * pos = NULL;
-                    char * tmp = strdup(info->human_readable_desc);
-                    for (line = strtok_r(tmp,  "\n", &pos); line != NULL;
-                         line = strtok_r(NULL, "\n", &pos))
-                    {
-                        hb_log("       + %s", line);
-                    }
-                    free(tmp);
-                }
-                hb_filter_info_close(&info);
-            }
-        }
-    }
+    // Filters can modify dimensions. So show them first.
+    hb_display_filters_info(job->list_filter, "     ");
 
     hb_log( "   + Output geometry" );
     hb_log( "     + storage dimensions: %d x %d", job->width, job->height );
@@ -699,6 +711,18 @@ void hb_display_job_info(hb_job_t *job)
         {
             hb_log("     + hdr10+ dynamic metadata");
 
+        }
+
+        if (job->spherical_mapping.projection > HB_SPHERICAL_UNSET)
+        {
+            hb_log("     + spherical mapping: %s",
+                   av_spherical_projection_name(job->spherical_mapping.projection));
+        }
+
+        if (job->stereo_3d.type > HB_STEREO3D_UNSET && job->stereo_3d.type < HB_STEREO3D_UNSPEC)
+        {
+            hb_log("     + stereo 3d: %s",
+                   av_stereo3d_type_name(job->stereo_3d.type));
         }
     }
 
@@ -838,7 +862,13 @@ void hb_display_job_info(hb_job_t *job)
                     hb_log("     + compression level: %.2f",
                            audio->config.out.compression_level);
                 }
+
+                hb_display_filters_info(audio->config.out.list_filter, "     ");
             }
+            char channel_layout_name[256];
+            hb_layout_get_name(audio->config.out.ch_layout,
+                               channel_layout_name, sizeof(channel_layout_name));
+            hb_log("     + ch layout: %s", channel_layout_name);
         }
     }
 }
@@ -1111,7 +1141,7 @@ static int sanitize_subtitles( hb_job_t * job )
         // not required to add the subtitle rendering filter since
         // we will always try to do it here.
         hb_filter_object_t *filter = hb_filter_init(HB_FILTER_RENDER_SUB);
-        hb_add_filter_dict(job, filter, NULL);
+        hb_add_filter_dict(job->list_filter, filter, NULL);
     }
 
     return 0;
@@ -1208,6 +1238,17 @@ static int sanitize_audio(hb_job_t *job)
             audio->config.out.samples_per_frame =
                                     audio->config.in.samples_per_frame;
             audio->config.out.samplerate = audio->config.in.samplerate;
+
+            av_channel_layout_copy(audio->config.out.ch_layout, audio->config.in.ch_layout);
+
+            // Remove unneeded filters.
+            hb_filter_object_t *filter = NULL;
+            while ((filter = hb_list_item(audio->config.out.list_filter, 0)))
+            {
+                hb_list_rem(audio->config.out.list_filter, filter);
+                hb_filter_close(&filter);
+            }
+
             continue;
         }
 
@@ -1255,6 +1296,8 @@ static int sanitize_audio(hb_job_t *job)
                 audio->config.out.mixdown = best_mixdown;
             }
         }
+
+        av_channel_layout_from_mask(audio->config.out.ch_layout, hb_ff_mixdown_xlat(audio->config.out.mixdown, NULL));
 
         /* sense-check the requested compression level */
         if (audio->config.out.compression_level < 0)
@@ -1377,6 +1420,12 @@ static void sanitize_filter_list_pre(hb_job_t *job, hb_geometry_t src_geo)
 {
     hb_list_t *list = job->list_filter;
 
+    // Add adapter
+    hb_filter_object_t *filter = hb_filter_init(HB_FILTER_ADAPTER);
+    char *settings = hb_strdup_printf("rotation=%d", job->title->rotation);
+    hb_add_filter(list, filter, settings);
+    free(settings);
+
     // Add selective deinterlacing mode if comb detection is enabled
     if (hb_filter_find(list, HB_FILTER_COMB_DETECT) != NULL)
     {
@@ -1397,7 +1446,7 @@ static void sanitize_filter_list_pre(hb_job_t *job, hb_geometry_t src_geo)
     }
 
     int angle = 0;
-    hb_filter_object_t *filter = hb_filter_find(list, HB_FILTER_ROTATE);
+    filter = hb_filter_find(list, HB_FILTER_ROTATE);
     if (filter != NULL)
     {
         hb_dict_t *settings = filter->settings;
@@ -1511,7 +1560,7 @@ static void sanitize_filter_list_post(hb_job_t *job)
 
         hb_filter_object_t *filter = hb_filter_init(HB_FILTER_FORMAT);
         char *settings = hb_strdup_printf("format=%s", av_get_pix_fmt_name(encoder_pix_fmt));
-        hb_add_filter(job, filter, settings);
+        hb_add_filter(job->list_filter, filter, settings);
         free(settings);
     }
 }
@@ -1666,7 +1715,7 @@ static void sanitize_dynamic_hdr_metadata_passthru(hb_job_t *job)
                                           scale_factor_x, scale_factor_y,
                                           crop_top, crop_bottom, crop_left, crop_right,
                                           pad_top, pad_bottom, pad_left, pad_right);
-        hb_add_filter(job, filter, settings);
+        hb_add_filter(job->list_filter, filter, settings);
         free(settings);
 
         job->color_range = job->passthru_dynamic_hdr_metadata & HB_HDR_DYNAMIC_METADATA_DOVI &&
@@ -1705,8 +1754,6 @@ static void do_job(hb_job_t *job)
     hb_title_t       * title;
     hb_interjob_t    * interjob;
     hb_work_object_t * w;
-    hb_audio_t       * audio;
-    hb_subtitle_t    * subtitle;
 
     title = job->title;
 
@@ -1806,6 +1853,7 @@ static void do_job(hb_job_t *job)
                                                   &job->hw_device_ctx);
             if (result)
             {
+                hb_log("Failure to initialise hwaccel");
                 job->hw_accel = NULL;
                 job->hw_pix_fmt = AV_PIX_FMT_NONE;
             }
@@ -1941,7 +1989,7 @@ static void do_job(hb_job_t *job)
         // Audio fifos must be initialized before sync
         for (i = 0; i < hb_list_count(job->list_audio); i++)
         {
-            audio = hb_list_item(job->list_audio, i);
+            hb_audio_t *audio = hb_list_item(job->list_audio, i);
 
             /* set up the audio work fifos */
             audio->priv.fifo_in   = hb_fifo_init(FIFO_LARGE, FIFO_LARGE_WAKE);
@@ -1972,7 +2020,7 @@ static void do_job(hb_job_t *job)
     // Subtitle decoder and sync fifos must be initialized before sync
     for (i = 0; i < hb_list_count( job->list_subtitle ); i++)
     {
-        subtitle = hb_list_item( job->list_subtitle, i );
+        hb_subtitle_t *subtitle = hb_list_item( job->list_subtitle, i );
         w = hb_get_work( job->h, subtitle->codec );
         // Must set capacity of the raw-FIFO to be set >= the maximum
         // number of subtitle lines that could be decoded prior to a
@@ -2049,7 +2097,72 @@ static void do_job(hb_job_t *job)
     {
         for( i = 0; i < hb_list_count( job->list_audio ); i++ )
         {
-            audio = hb_list_item( job->list_audio, i );
+            hb_audio_t *audio = hb_list_item( job->list_audio, i );
+            hb_list_t *list_filter = audio->config.out.list_filter;
+
+            hb_filter_init_t init;
+            memset(&init, 0, sizeof(init));
+
+            init.samplerate = audio->config.out.samplerate;
+            init.sample_fmt = AV_SAMPLE_FMT_FLT;
+            av_channel_layout_copy(&init.ch_layout, audio->config.out.ch_layout);
+
+            // Audio Filter Chain
+            if (hb_list_count(list_filter))
+            {
+                for (int j = 0; j < hb_list_count(list_filter);)
+                {
+                    hb_filter_object_t *filter = hb_list_item(list_filter, j);
+                    filter->done = &job->done;
+                    if (filter->init != NULL && filter->init(filter, &init))
+                    {
+                        hb_log("Failure to initialise audio filter '%s', disabling",
+                                filter->name);
+                        hb_list_rem(list_filter, filter);
+                        hb_filter_close(&filter);
+                        continue;
+                    }
+                    j++;
+                }
+            }
+
+            av_channel_layout_copy(audio->config.out.ch_layout, &init.ch_layout);
+            av_channel_layout_uninit(&init.ch_layout);
+
+            if (hb_list_count(list_filter))
+            {
+                // Combine HB_AUDIO_FILTER_AVFILTERs that are sequential
+                hb_avfilter_audio_combine(list_filter);
+
+                for (int j = 0; j < hb_list_count(list_filter);)
+                {
+                    hb_filter_object_t *filter = hb_list_item(list_filter, j);
+                    filter->done = &job->done;
+                    if (filter->post_init != NULL && filter->post_init(filter, job))
+                    {
+                        hb_log("Failure to initialise audio filter '%s', disabling",
+                               filter->name);
+                        hb_list_rem(list_filter, filter);
+                        hb_filter_close(&filter);
+                        continue;
+                    }
+                    j++;
+                }
+
+                // Set up the audio filter fifo pipeline
+                hb_fifo_t *fifo_in = audio->priv.fifo_sync;
+                for (int j = 0; j < hb_list_count(list_filter); j++)
+                {
+                    hb_filter_object_t *filter = hb_list_item(list_filter, j);
+                    if (!filter->skip)
+                    {
+                        filter->fifo_in = fifo_in;
+                        filter->fifo_out = hb_fifo_init(FIFO_MINI, FIFO_MINI_WAKE);
+                        fifo_in = filter->fifo_out;
+                    }
+                }
+                audio->priv.fifo_render = fifo_in;
+            }
 
             /*
             * Audio Encoder Thread
@@ -2072,6 +2185,10 @@ static void do_job(hb_job_t *job)
                 // directly.
                 w->fifo_in    = audio->priv.fifo_raw;
             }
+            else if (audio->priv.fifo_render)
+            {
+                w->fifo_in    = audio->priv.fifo_render;
+            }
             else
             {
                 w->fifo_in    = audio->priv.fifo_sync;
@@ -2085,7 +2202,7 @@ static void do_job(hb_job_t *job)
 
         for( i = 0; i < hb_list_count( job->list_subtitle ); i++ )
         {
-            subtitle = hb_list_item(job->list_subtitle, i);
+            hb_subtitle_t *subtitle = hb_list_item(job->list_subtitle, i);
 
             /*
             * Subtitle Encoder Thread
@@ -2207,7 +2324,8 @@ static void do_job(hb_job_t *job)
         w = hb_list_item(job->list_work, i);
         w->thread = hb_thread_init(w->name, hb_work_loop, w, HB_LOW_PRIORITY);
     }
-    if (job->list_filter && !job->indepth_scan)
+
+    if (!job->indepth_scan)
     {
         for (i = 0; i < hb_list_count(job->list_filter); i++)
         {
@@ -2219,6 +2337,25 @@ static void do_job(hb_job_t *job)
                 // to start the filter's thread
                 filter->thread = hb_thread_init(filter->name, filter_loop,
                                                 filter, HB_LOW_PRIORITY);
+            }
+        }
+
+        for (i = 0; i < hb_list_count(job->list_audio); i++)
+        {
+            hb_audio_t *audio = hb_list_item(job->list_audio, i);
+            hb_list_t *list_filter = audio->config.out.list_filter;
+
+            for (int j = 0; j < hb_list_count(list_filter); j++)
+            {
+                hb_filter_object_t *filter = hb_list_item(list_filter, j);
+
+                if (!filter->skip)
+                {
+                    // Filters were initialized earlier, so we just need
+                    // to start the filter's thread
+                    filter->thread = hb_thread_init(filter->name, filter_loop,
+                                                    filter, HB_LOW_PRIORITY);
+                }
             }
         }
     }
@@ -2255,6 +2392,22 @@ cleanup:
         }
     }
 
+    for (i = 0; i < hb_list_count(job->list_audio); i++)
+    {
+        hb_audio_t *audio = hb_list_item(job->list_audio, i);
+        hb_list_t *list_filter = audio->config.out.list_filter;
+
+        for (int j = 0; j < hb_list_count(list_filter); j++)
+        {
+            hb_filter_object_t *filter = hb_list_item(list_filter, j);
+            if( filter->thread != NULL )
+            {
+                hb_thread_close(&filter->thread);
+            }
+            filter->close(filter);
+        }
+    }
+
     // Close work objects
     // A work thread can use data created by another work thread's init.
     // So close all work threads before closing thread data.
@@ -2283,7 +2436,7 @@ cleanup:
 
     for (i = 0; i < hb_list_count( job->list_subtitle ); i++)
     {
-        subtitle = hb_list_item( job->list_subtitle, i );
+        hb_subtitle_t *subtitle = hb_list_item( job->list_subtitle, i );
         if( subtitle )
         {
             hb_fifo_close( &subtitle->fifo_in );
@@ -2294,7 +2447,18 @@ cleanup:
     }
     for (i = 0; i < hb_list_count( job->list_audio ); i++)
     {
-        audio = hb_list_item( job->list_audio, i );
+        hb_audio_t *audio = hb_list_item(job->list_audio, i);
+        hb_list_t *list_filter = audio->config.out.list_filter;
+
+        for (int j = 0; j < hb_list_count(list_filter); j++)
+        {
+            hb_filter_object_t *filter = hb_list_item(list_filter, j);
+            if (!filter->skip)
+            {
+                hb_fifo_close(&filter->fifo_out);
+            }
+        }
+
         if( audio->priv.fifo_in != NULL )
             hb_fifo_close( &audio->priv.fifo_in );
         if( audio->priv.fifo_raw != NULL )

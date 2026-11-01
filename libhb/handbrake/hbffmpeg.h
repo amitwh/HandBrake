@@ -22,6 +22,9 @@
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/ambient_viewing_environment.h"
 #include "libavutil/dovi_meta.h"
+#include "libavutil/spherical.h"
+#include "libavutil/stereo3d.h"
+#include "libavutil/hwcontext.h"
 #include "libswscale/swscale.h"
 #include "libswresample/swresample.h"
 #include "handbrake/common.h"
@@ -34,7 +37,6 @@ const char* const* hb_av_preset_get_names(int encoder);
 const char* const* hb_av_tune_get_names(int encoder);
 
 uint64_t hb_ff_mixdown_xlat(int hb_mixdown, int *downmix_mode);
-int      hb_ff_mixdown_ch_xlat(AVChannelLayout *channel_layout, int hb_mixdown, int *downmix_mode);
 void     hb_ff_set_sample_fmt(AVCodecContext *, const AVCodec *, enum AVSampleFormat);
 
 int hb_sws_get_colorspace(int color_matrix);
@@ -53,6 +55,12 @@ AVAmbientViewingEnvironment hb_ambient_hb_to_ff(hb_ambient_viewing_environment_m
 
 AVDOVIDecoderConfigurationRecord hb_dovi_hb_to_ff(hb_dovi_conf_t dovi);
 hb_dovi_conf_t hb_dovi_ff_to_hb(AVDOVIDecoderConfigurationRecord dovi);
+
+AVSphericalMapping hb_spherical_hb_to_ff(hb_spherical_mapping_t spherical_mapping);
+hb_spherical_mapping_t hb_spherical_ff_to_hb(AVSphericalMapping spherical_mapping);
+
+AVStereo3D hb_stereo_3d_hb_to_ff(hb_stereo_3d_t stereo_3d);
+hb_stereo_3d_t hb_stereo_3d_ff_to_hb(AVStereo3D stereo_3d);
 
 struct SwsContext*
 hb_sws_get_context(int srcW, int srcH, enum AVPixelFormat srcFormat, int srcRange,
@@ -74,5 +82,8 @@ const int* hb_av_get_pix_fmts(int encoder, const char *profile);
 int hb_av_can_use_zscale(enum AVPixelFormat pix_fmt,
                          int in_width, int in_height,
                          int out_width, int out_height);
+
+int hb_avcodec_test_encoder_available(int encoder);
+int hb_avcodec_test_encoder(const AVCodec *codec, enum AVPixelFormat fmt);
 
 #endif // HANDBRAKE_FFMPEG_H

@@ -75,6 +75,7 @@ namespace HandBrakeWPF
         public const string AutonameFilePrePostString = "AutonameFilePrePostString";
         public const string WhenDonePerformActionImmediately = "WhenDonePerformActionImmediately";
         public const string DarkThemeMode = "AppThemeMode";
+        public const string ThemeImageType = "ThemeImageType";
         public const string AlwaysUseDefaultPath = "AlwaysUseDefaultPath";
         public const string PauseEncodingOnLowBattery = "PauseEncodingOnLowBattery";
         public const string LowBatteryLevel = "LowBatteryLevel";
@@ -90,6 +91,7 @@ namespace HandBrakeWPF
         public const string ForceDisableHardwareSupport = "ForceDisableHardwareSupport";
         public const string IsUpdateAvailableBuild = "IsUpdateAvailableBuild";
         public const string EnableNvDecSupport = "EnableNvDecSupport";
+        public const string EnableAmfDecSupport = "EnableAmfDecSupport";
         public const string UseIsoDateFormat = "UseIsoDateFormat";
         public const string ExtendedQueueDisplay = "ExtendedQueueDisplay";
         public const string HardwareDetectTimeoutSeconds = "HardwareDetectTimeoutSeconds";

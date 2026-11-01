@@ -11,6 +11,7 @@
 #include "handbrake/hbffmpeg.h"
 #include "handbrake/hbavfilter.h"
 #include "handbrake/encx264.h"
+#include "handbrake/vaapi_common.h"
 #include "libavfilter/avfilter.h"
 #include <stdio.h>
 #include <unistd.h>
@@ -205,7 +206,7 @@ void hb_log_level_set(hb_handle_t *h, int level)
  */
 hb_handle_t * hb_init( int verbose )
 {
-    hb_handle_t * h = calloc( sizeof( hb_handle_t ), 1 );
+    hb_handle_t * h = calloc( 1, sizeof( hb_handle_t ) );
 
     /* See hb_deep_log() and hb_log() in common.c */
     hb_log_level_set(h, verbose);
@@ -224,7 +225,7 @@ hb_handle_t * hb_init( int verbose )
     h->pause_lock = hb_lock_init();
     h->pause_date = -1;
 
-    h->interjob = calloc( sizeof( hb_interjob_t ), 1 );
+    h->interjob = calloc( 1, sizeof( hb_interjob_t ) );
 
     /* Start library thread */
     hb_log( "hb_init: starting libhb thread" );
@@ -387,7 +388,7 @@ void hb_scan( hb_handle_t * h, hb_list_t * paths, int title_index,
     {
         single_path = hb_list_item(paths, 0);
     }
-    
+
     // Check if scanning is necessary. Only works on Single Path.
     if (single_path != NULL && h->title_set.path != NULL && !strcmp(h->title_set.path, single_path))
     {
@@ -525,12 +526,12 @@ hb_title_set_t * hb_get_title_set( hb_handle_t * h )
 hb_list_t * hb_get_title_coverarts( hb_handle_t * h, int title )
 {
     hb_title_t * sourceTitle = hb_list_item(h->title_set.list_title, title);
-    if (sourceTitle) 
+    if (sourceTitle)
     {
         hb_list_t * coverart = sourceTitle->metadata->list_coverart;
         return coverart;
     }
-    
+
     hb_list_t * emptyList = hb_list_init();
     return emptyList;
 }
@@ -881,6 +882,8 @@ hb_image_t * hb_get_preview(hb_handle_t * h, hb_dict_t * job_dict,
             case HB_FILTER_DECOMB:
             case HB_FILTER_DETELECINE:
             case HB_FILTER_YADIF:
+            case HB_FILTER_DEBAND:
+            case HB_FILTER_BM3D:
             case HB_FILTER_GRAYSCALE:
                 break;
 
@@ -1693,12 +1696,12 @@ void hb_add_filter2( hb_value_array_t * list, hb_dict_t * filter_dict )
 }
 
 /**
- * Add a filter to a jobs filter list
+ * Add a filter to a  filter list
  *
- * @param job Handle to hb_job_t
+ * @param list Handle to a filter hb_list_t
  * @param settings to give the filter
  */
-void hb_add_filter_dict( hb_job_t * job, hb_filter_object_t * filter,
+void hb_add_filter_dict( hb_list_t * list_filter, hb_filter_object_t * filter,
                          const hb_dict_t * settings_in )
 {
     if (filter == NULL)
@@ -1726,12 +1729,12 @@ void hb_add_filter_dict( hb_job_t * job, hb_filter_object_t * filter,
     {
         // Find the position in the filter chain this filter belongs in
         int i;
-        for( i = 0; i < hb_list_count( job->list_filter ); i++ )
+        for( i = 0; i < hb_list_count( list_filter ); i++ )
         {
-            hb_filter_object_t * f = hb_list_item( job->list_filter, i );
+            hb_filter_object_t * f = hb_list_item( list_filter, i );
             if( f->id > filter->id )
             {
-                hb_list_insert( job->list_filter, i, filter );
+                hb_list_insert( list_filter, i, filter );
                 return;
             }
             else if( f->id == filter->id )
@@ -1743,16 +1746,16 @@ void hb_add_filter_dict( hb_job_t * job, hb_filter_object_t * filter,
         }
     }
     // No position found or order not enforced for this filter
-    hb_list_add( job->list_filter, filter );
+    hb_list_add( list_filter, filter );
 }
 
 /**
- * Add a filter to a jobs filter list
+ * Add a filter to a  filter list
  *
- * @param job Handle to hb_job_t
+ * @param list Handle to a filter hb_list_t
  * @param settings to give the filter
  */
-void hb_add_filter( hb_job_t * job, hb_filter_object_t * filter,
+void hb_add_filter( hb_list_t * list, hb_filter_object_t * filter,
                     const char * settings_in )
 {
     if (filter == NULL)
@@ -1766,7 +1769,7 @@ void hb_add_filter( hb_job_t * job, hb_filter_object_t * filter,
         hb_log("hb_add_filter: failed to parse filter settings!");
         return;
     }
-    hb_add_filter_dict(job, filter, settings);
+    hb_add_filter_dict(list, filter, settings);
     hb_value_free(&settings);
 }
 
@@ -1810,7 +1813,7 @@ static void hb_add_internal( hb_handle_t * h, hb_job_t * job, hb_list_t *list_pa
     char            audio_lang[4];
 
     /* Copy the job */
-    job_copy                  = calloc( sizeof( hb_job_t ), 1 );
+    job_copy                  = calloc( 1, sizeof( hb_job_t ) );
     memcpy(job_copy, job, sizeof(hb_job_t));
     job_copy->json            = NULL;
     job_copy->encoder_preset  = NULL;
@@ -1921,7 +1924,7 @@ hb_job_t* hb_job_copy(hb_job_t * job)
     hb_job_t      * job_copy;
 
     /* Copy the job */
-    job_copy        = calloc( sizeof( hb_job_t ), 1 );
+    job_copy        = calloc( 1, sizeof( hb_job_t ) );
     if (job_copy == NULL)
         return NULL;
 
@@ -2267,6 +2270,8 @@ void hb_global_close()
         closedir( dir );
         rmdir( dirname );
     }
+
+    hb_common_global_close(disable_hardware);
 }
 
 /**

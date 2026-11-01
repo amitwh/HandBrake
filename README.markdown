@@ -1,9 +1,11 @@
 # HandBrake [![macOS Build](https://github.com/HandBrake/HandBrake/workflows/macOS%20build/badge.svg)](https://github.com/HandBrake/HandBrake/actions?query=workflow%3A%22macOS+build%22) [![Windows Build](https://github.com/HandBrake/HandBrake/workflows/Windows%20Build/badge.svg)](https://github.com/HandBrake/HandBrake/actions?query=workflow%3A%22Windows+Build%22) [![Linux Build](https://github.com/HandBrake/HandBrake/workflows/Linux%20Build/badge.svg)](https://github.com/HandBrake/HandBrake/actions?query=workflow%3A%22Linux+Build%22)
 
 
-> ## Fork additions (1.11.2-1~fork3)
+> ## Fork additions (1.12.0~git20261101-1~fork1)
 >
-> This fork extends HandBrake 1.11.2 with:
+> Based on upstream master through `fa48b48a4` (2026-11-01; includes
+> FFmpeg 9.0.2, the new audio filters, AMF hw decode, and upstream's own
+> VAAPI encode). The fork adds:
 >
 > - **Smart join** - combine multiple files into one title; lossless
 >   stream copy when all inputs match (video copied byte-for-byte),
@@ -14,9 +16,9 @@
 > - **Edit filters** - playback speed (0.25x-4x, pitch-preserving),
 >   PNG/JPEG watermark, and FreeType timestamp burn-in - in the CLI and
 >   the GTK4 GUI (Filters tab).
-> - **Pure-Mesa VAAPI** encode/decode for AMD APUs (no AMDGPU-PRO
->   needed): `vaapi_h264`/`vaapi_h265`/`vaapi_h265_10bit` encoders and
->   `--enable-hw-decoding vaapi`.
+> - **VAAPI hardware decode** for AMD/Intel/Mesa (`--enable-hw-decoding
+>   vaapi`, or Preferences in the GTK GUI); VAAPI *encode* is upstream's
+>   (`vaapi_h264`/`vaapi_hevc`/`vaapi_av1`/`vaapi_VP8`/`vaapi_VP9`).
 > - **Native Debian packaging** (`pkg/linux/debian`).
 >
 > See **[docs/JOIN-GUIDE.md](docs/JOIN-GUIDE.md)** for usage (GUI +
@@ -60,6 +62,4 @@ Please read our [Translations Guide](https://github.com/HandBrake/HandBrake/blob
 
 ## Special Thanks
 
-<a href="https://www.macstadium.com/"><img width="200" alt="MacStadium" src="https://uploads-ssl.webflow.com/5ac3c046c82724970fc60918/5c019d917bba312af7553b49_MacStadium-developerlogo.png"></a>
-
-and to many others who have contributed! [Thanks](THANKS.markdown)
+To all those who have contributed! [Thanks](THANKS.markdown)

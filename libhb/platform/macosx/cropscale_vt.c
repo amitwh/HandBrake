@@ -41,6 +41,7 @@ hb_filter_object_t hb_filter_crop_scale_vt =
     .id                = HB_FILTER_CROP_SCALE_VT,
     .enforce_order     = 1,
     .name              = "Crop and Scale (VideoToolbox)",
+    .short_name        = "cropscale_vt",
     .settings          = NULL,
     .init              = crop_scale_vt_init,
     .work              = crop_scale_vt_work,
@@ -51,7 +52,7 @@ hb_filter_object_t hb_filter_crop_scale_vt =
 static int crop_scale_vt_init(hb_filter_object_t *filter,
                               hb_filter_init_t   *init)
 {
-    filter->private_data = calloc(sizeof(struct hb_filter_private_s), 1);
+    filter->private_data = calloc(1, sizeof(struct hb_filter_private_s));
     if (filter->private_data == NULL)
     {
         hb_error("cropscale_vt: calloc failed");

@@ -643,17 +643,12 @@ void hb_get_user_config_directory( char path[512] )
 
     if ((p = getenv("XDG_CONFIG_HOME")) != NULL)
     {
-        strncpy(path, p, 511);
-        path[511] = 0;
+        snprintf(path, 512, "%s", p);
         return;
     }
     else if ((p = getenv("HOME")) != NULL)
     {
-        strncpy(path, p, 511);
-        path[511] = 0;
-        int len = strlen(path);
-        strncpy(path + len, "/.config", 511 - len - 1);
-        path[511] = 0;
+        snprintf(path, 512, "%s/.config", p);
         return;
     }
 #elif defined( __APPLE__ )
@@ -911,10 +906,10 @@ void hb_rewinddir(HB_DIR *dir)
 #endif
 }
 
-char * hb_strr_dir_sep(const char *path)
+const char * hb_strr_dir_sep(const char *path)
 {
 #ifdef SYS_MINGW
-    char *sep = strrchr(path, '/');
+    const char *sep = strrchr(path, '/');
     if (sep == NULL)
         sep = strrchr(path, '\\');
     return sep;
@@ -1026,7 +1021,7 @@ static void attribute_align_thread hb_thread_func( void * _t )
 hb_thread_t * hb_thread_init( const char * name, void (* function)(void *),
                               void * arg, int priority )
 {
-    hb_thread_t * t = calloc( sizeof( hb_thread_t ), 1 );
+    hb_thread_t * t = calloc( 1, sizeof( hb_thread_t ) );
 
     t->name     = strdup( name );
     t->function = function;
@@ -1097,7 +1092,7 @@ struct hb_lock_s
  ***********************************************************************/
 hb_lock_t * hb_lock_init()
 {
-    hb_lock_t * l = calloc( sizeof( hb_lock_t ), 1 );
+    hb_lock_t * l = calloc( 1, sizeof( hb_lock_t ) );
 
     pthread_mutexattr_t mta;
 
@@ -1156,7 +1151,7 @@ struct hb_cond_s
  ***********************************************************************/
 hb_cond_t * hb_cond_init()
 {
-    hb_cond_t * c = calloc( sizeof( hb_cond_t ), 1 );
+    hb_cond_t * c = calloc( 1, sizeof( hb_cond_t ) );
 
     if( c == NULL )
         return NULL;
@@ -1229,7 +1224,7 @@ struct hb_net_s
 
 hb_net_t * hb_net_open( char * address, int port )
 {
-    hb_net_t * n = calloc( sizeof( hb_net_t ), 1 );
+    hb_net_t * n = calloc( 1, sizeof( hb_net_t ) );
 
     struct sockaddr_in   sock;
     struct hostent     * host;
@@ -1331,7 +1326,7 @@ void* hb_system_sleep_opaque_init()
 {
     void *opaque = NULL;
 #ifdef __APPLE__
-    opaque = calloc(sizeof(IOPMAssertionID), 1);
+    opaque = calloc(1, sizeof(IOPMAssertionID));
     if (opaque == NULL)
     {
         hb_error("hb_system_sleep: failed to allocate opaque");
@@ -1501,6 +1496,8 @@ size_t hb_getline(char ** lineptr, size_t * n, FILE * fp)
         if ((p - bufptr) >= (size - 1))
         {
             char * tmp;
+            size_t offset = p - bufptr;
+
             size = size + 128;
             tmp = realloc(bufptr, size);
             if (tmp == NULL)
@@ -1508,7 +1505,7 @@ size_t hb_getline(char ** lineptr, size_t * n, FILE * fp)
                 free(bufptr);
                 return -1;
             }
-            p = tmp + (p - bufptr);
+            p = tmp + offset;
             bufptr = tmp;
         }
         *p++ = c;
@@ -1659,7 +1656,7 @@ hb_display_t * hb_display_init(const char         * driver_name,
                                const uint32_t       dri_render_node,
                                const char * const * interface_names)
 {
-    hb_display_t * hbDisplay = calloc(sizeof(hb_display_t), 1);
+    hb_display_t * hbDisplay = calloc(1, sizeof(hb_display_t));
     char         * env;
     int            ii;
 

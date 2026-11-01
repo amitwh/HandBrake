@@ -13,10 +13,18 @@
 //#define HB_DEBUG_CFR_DROPS 1
 #define MAX_FRAME_ANALYSIS_DEPTH 10
 
+typedef enum
+{
+    HB_FRAME_DROP_MODE_NEAREST         = 0,
+    HB_FRAME_DROP_MODE_MOTION_ANALYSIS = 1,
+    HB_FRAME_DROP_MODE_AUTO            = 2,
+} hb_frame_drop_mode_t;
+
 struct hb_filter_private_s
 {
     hb_job_t      * job;
     int             cfr;
+    hb_frame_drop_mode_t frame_drop_mode;
     hb_rational_t   input_vrate;
     hb_rational_t   vrate;
     hb_fifo_t     * delay_queue;
@@ -30,6 +38,7 @@ struct hb_filter_private_s
     int             count_frames;       // frames output so far
     double          frame_duration;     // 90KHz ticks per frame (for CFR/PFR)
     double          out_last_stop;      // where last frame ended (for CFR/PFR)
+    double          cfr_stop;           // where a frame would have ended if CFR
     int             drops;              // frames dropped (for CFR/PFR)
     int             dups;               // frames duped (for CFR/PFR)
 
@@ -57,13 +66,14 @@ static void hb_vfr_close( hb_filter_object_t * filter );
 static hb_filter_info_t * hb_vfr_info( hb_filter_object_t * filter );
 
 static const char hb_vfr_template[] =
-    "mode=^([012])$:rate=^"HB_RATIONAL_REG"$";
+    "mode=^([012])$:rate=^"HB_RATIONAL_REG"$:frame-drop-mode=^([012])$";
 
 hb_filter_object_t hb_filter_vfr =
 {
     .id                = HB_FILTER_VFR,
     .enforce_order     = 1,
     .name              = "Framerate Shaper",
+    .short_name        = "vfr",
     .settings          = NULL,
     .init              = hb_vfr_init,
     .work              = hb_vfr_work,
@@ -236,7 +246,21 @@ static hb_buffer_t * adjust_frame_rate( hb_filter_private_t * pv,
         penultimate = hb_list_item(pv->frame_rate_list, count - 2);
         ultimate    = hb_list_item(pv->frame_rate_list, count - 1);
 
-        pv->frame_metric[count - 1] = pv->metric->work(pv->metric, penultimate, ultimate);
+        if (pv->frame_drop_mode == HB_FRAME_DROP_MODE_MOTION_ANALYSIS)
+        {
+            pv->frame_metric[count - 1] = pv->metric->work(pv->metric, penultimate, ultimate);
+        }
+        else
+        {
+            // Compute a simpler metric, the difference between where
+            // a timestamp would be if the frame rate were costant
+            // and where it's currently is.
+            while (penultimate->s.start > pv->cfr_stop)
+            {
+                pv->cfr_stop += pv->frame_duration;
+            }
+            pv->frame_metric[count - 2] = penultimate->s.start - pv->cfr_stop;
+        }
 
         if (count < pv->frame_analysis_depth)
         {
@@ -269,7 +293,7 @@ static hb_buffer_t * adjust_frame_rate( hb_filter_private_t * pv,
         out = hb_list_item(pv->frame_rate_list, drop_frame);
 
 #if defined(HB_DEBUG_CFR_DROPS)
-        hb_log("CFR Drop: %ld metric %d", out->s.pcr, (int)pv->frame_metric[drop_frame]);
+        hb_log("CFR Drop: %"PRId64" metric %d", out->s.pcr, (int)pv->frame_metric[drop_frame]);
         int jj;
         for (jj = 0; jj < count; jj++)
         {
@@ -296,7 +320,7 @@ static hb_buffer_t * adjust_frame_rate( hb_filter_private_t * pv,
 
 #if defined(HB_DEBUG_CFR_DROPS)
     static int64_t lastpass = 0;
-    hb_log("CFR Pass: %ld ~ %ld metric %d", out->s.pcr, out->s.pcr - lastpass, (int)pv->frame_metric[0]);
+    hb_log("CFR Pass: %"PRId64"~ %"PRId64" metric %d", out->s.pcr, out->s.pcr - lastpass, (int)pv->frame_metric[0]);
     lastpass = out->s.pcr;
 #endif
 
@@ -371,10 +395,32 @@ static int hb_vfr_init(hb_filter_object_t *filter, hb_filter_init_t *init)
 
     pv->cfr              = init->cfr;
     pv->input_vrate = pv->vrate = init->vrate;
+    pv->frame_drop_mode = HB_FRAME_DROP_MODE_NEAREST;
     hb_dict_extract_int(&pv->cfr, filter->settings, "mode");
     hb_dict_extract_rational(&pv->vrate, filter->settings, "rate");
 
-    if (pv->cfr)
+    int frame_drop_mode = 0;
+    if (hb_dict_extract_int(&frame_drop_mode, filter->settings, "frame-drop-mode") &&
+        frame_drop_mode >= HB_FRAME_DROP_MODE_NEAREST &&
+        frame_drop_mode <= HB_FRAME_DROP_MODE_AUTO)
+    {
+        pv->frame_drop_mode = (hb_frame_drop_mode_t)frame_drop_mode;
+    }
+
+    if (pv->frame_drop_mode == HB_FRAME_DROP_MODE_AUTO)
+    {
+        hb_geometry_t geometry = init->geometry;
+        if (geometry.width <= 720 && geometry.height <= 576)
+        {
+            pv->frame_drop_mode = HB_FRAME_DROP_MODE_MOTION_ANALYSIS;
+        }
+        else
+        {
+            pv->frame_drop_mode = HB_FRAME_DROP_MODE_NEAREST;
+        }
+    }
+
+    if (pv->cfr && pv->frame_drop_mode == HB_FRAME_DROP_MODE_MOTION_ANALYSIS)
     {
         pv->metric = hb_motion_metric_init(init);
         if (pv->metric == NULL)
@@ -383,7 +429,7 @@ static int hb_vfr_init(hb_filter_object_t *filter, hb_filter_init_t *init)
         }
     }
 
-    // frame-drop analysis always looks at at least 2 buffers
+    // frame-drop analysis always looks at least 2 buffers
     pv->frame_analysis_depth = 2;
 
     // Calculate the number of frames we need to keep in order to
@@ -456,6 +502,7 @@ static int hb_vfr_init(hb_filter_object_t *filter, hb_filter_init_t *init)
     }
     pv->frame_duration = (double)pv->vrate.den * 90000. / pv->vrate.num;
     pv->out_last_stop  = (int64_t)AV_NOPTS_VALUE;
+    pv->cfr_stop       = 0;
     init->cfr          = pv->cfr;
 
     return 0;

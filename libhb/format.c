@@ -22,6 +22,7 @@ hb_filter_object_t hb_filter_format =
     .enforce_order     = 1,
     .skip              = 1,
     .name              = "Format",
+    .short_name        = "format",
     .settings          = NULL,
     .init              = format_init,
     .work              = hb_avfilter_null_work,
@@ -65,7 +66,16 @@ static int format_init(hb_filter_object_t *filter, hb_filter_init_t *init)
         hb_dict_set(avfilter, "vpp_qsv", avsettings);
     }
     else
-#elif HB_PROJECT_FEATURE_MF
+#endif
+#if HB_PROJECT_FEATURE_VCE
+    if (init->hw_pix_fmt == AV_PIX_FMT_AMF_SURFACE)
+    {
+        hb_dict_set_string(avsettings, "format", format);
+        hb_dict_set(avfilter, "vpp_amf", avsettings);
+    }
+    else
+#endif
+#if HB_PROJECT_FEATURE_MF
     if (init->hw_pix_fmt == AV_PIX_FMT_D3D11)
     {
         hb_dict_set_string(avsettings, "format", format);

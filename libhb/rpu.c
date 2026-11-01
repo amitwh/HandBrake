@@ -64,6 +64,7 @@ hb_filter_object_t hb_filter_rpu =
     .id                = HB_FILTER_RPU,
     .enforce_order     = 1,
     .name              = "RPU converter",
+    .short_name        = "rpu",
     .settings          = NULL,
     .init              = rpu_init,
     .work              = rpu_work,
@@ -75,7 +76,7 @@ hb_filter_object_t hb_filter_rpu =
 static int rpu_init(hb_filter_object_t *filter,
                     hb_filter_init_t   *init)
 {
-    filter->private_data = calloc(sizeof(struct hb_filter_private_s), 1);
+    filter->private_data = calloc(1, sizeof(struct hb_filter_private_s));
     if (filter->private_data == NULL)
     {
         hb_error("RPU calloc failed");

@@ -42,6 +42,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
 
 #if defined( __FreeBSD__ ) || defined(__OpenBSD__)
 #include <sys/socket.h>
@@ -423,8 +426,8 @@ static GhbBinding widget_bindings[] =
     {"PictureDetelecine", "active-id", "custom10", "PictureDetelecineCustom", "visible"},
     {"PictureColorspacePreset", "active-id", "custom11", "PictureColorspaceCustom", "visible"},
     {"VideoEncoder", "active-id", "svt_av1|svt_av1_10bit|x264|x264_10bit", "x264FastDecode", "visible"},
-    {"VideoEncoder", "active-id", "svt_av1|svt_av1_10bit|x264|x264_10bit|x265|x265_10bit|x265_12bit|x265_16bit|mpeg4|mpeg2|VP8|VP9|VP9_10bit|qsv_av1|qsv_av1_10bit|qsv_h264|qsv_h265|qsv_h265_10bit", "VideoOptionExtraWindow", "visible"},
-    {"VideoEncoder", "active-id", "svt_av1|svt_av1_10bit|x264|x264_10bit|x265|x265_10bit|x265_12bit|x265_16bit|mpeg4|mpeg2|VP8|VP9|VP9_10bit|qsv_av1|qsv_av1_10bit|qsv_h264|qsv_h265|qsv_h265_10bit", "VideoOptionExtraLabel", "visible"},
+    {"VideoEncoder", "active-id", "svt_av1|svt_av1_10bit|x264|x264_10bit|x265|x265_10bit|x265_12bit|x265_16bit|mpeg4|mpeg2|VP8|VP9|VP9_10bit|qsv_av1|qsv_av1_10bit|qsv_h264|qsv_h265|qsv_h265_10bit|vce_av1|vce_av1_10bit|vce_h264|vce_h265|vce_h265_10bit|vaapi_h264|vaapi_hevc|vaapi_av1|vaapi_vp8|vaapi_vp9", "VideoOptionExtraWindow", "visible"},
+    {"VideoEncoder", "active-id", "svt_av1|svt_av1_10bit|x264|x264_10bit|x265|x265_10bit|x265_12bit|x265_16bit|mpeg4|mpeg2|VP8|VP9|VP9_10bit|qsv_av1|qsv_av1_10bit|qsv_h264|qsv_h265|qsv_h265_10bit|vce_av1|vce_av1_10bit|vce_h264|vce_h265|vce_h265_10bit|vaapi_h264|vaapi_hevc|vaapi_av1|vaapi_vp8|vaapi_vp9", "VideoOptionExtraLabel", "visible"},
     {"auto_name", "active", NULL, "autoname_box", "sensitive"},
     {"CustomTmpEnable", "active", NULL, "CustomTmpDir", "sensitive"},
     {"PresetCategory", "active-id", "new", "PresetCategoryName", "visible"},
@@ -1177,19 +1180,17 @@ update_title_duration(signal_user_data_t *ud)
     gint hh, mm, ss;
     gint64 duration;
     gchar *text;
-    GtkWidget *widget;
     int title_id, titleindex;
     const hb_title_t *title;
 
     title_id = ghb_dict_get_int(ud->settings, "title");
     title = ghb_lookup_title(title_id, &titleindex);
-    widget = ghb_builder_widget("title_duration");
 
     duration = title_range_get_duration(ud->settings, title);
     ghb_break_duration(duration, &hh, &mm, &ss);
 
     text = g_strdup_printf("%02d:%02d:%02d", hh, mm, ss);
-    gtk_label_set_text(GTK_LABEL(widget), text);
+    gtk_label_set_text(GTK_LABEL(ghb_builder_widget("title_duration_inline")), text);
     g_free(text);
 }
 
@@ -3468,7 +3469,6 @@ set_has_chapter_markers (gboolean markers, signal_user_data_t *ud)
         ghb_set_destination(ud);
     GtkWidget *widget = ghb_builder_widget("ChapterMarkers");
     gtk_widget_set_sensitive(widget, markers);
-    update_title_duration(ud);
 
     markers &= ghb_dict_get_int(ud->settings, "ChapterMarkers");
     ghb_dict_set_bool(dest, "ChapterMarkers", markers);
@@ -3614,6 +3614,7 @@ ptop_update_bg (int side_changed, double new_val, gpointer data)
 
     if (ghb_settings_combo_int(ud->settings, "PtoPType") == 0)
         set_has_chapter_markers (end_int > start_int, ud);
+    update_title_duration(ud);
 }
 
 G_MODULE_EXPORT void
@@ -4867,6 +4868,11 @@ ghb_backend_events(signal_user_data_t *ud)
         ghb_queue_progress_set_fraction(ud, index, 1.0);
 
         ghb_clear_queue_state(GHB_STATE_WORKDONE);
+
+#ifdef __GLIBC__
+        malloc_trim(0);
+#endif
+
         if (ud->job_activity_log)
             g_io_channel_unref(ud->job_activity_log);
         ud->job_activity_log = NULL;

@@ -450,6 +450,7 @@ enum
     WORK_ENCCOPYJOIN
 };
 
+extern hb_filter_object_t hb_filter_adapter;
 extern hb_filter_object_t hb_filter_detelecine;
 extern hb_filter_object_t hb_filter_comb_detect;
 extern hb_filter_object_t hb_filter_decomb;
@@ -463,6 +464,8 @@ extern hb_filter_object_t hb_filter_deblock;
 extern hb_filter_object_t hb_filter_denoise;
 extern hb_filter_object_t hb_filter_nlmeans;
 extern hb_filter_object_t hb_filter_chroma_smooth;
+extern hb_filter_object_t hb_filter_bm3d;
+extern hb_filter_object_t hb_filter_deband;
 extern hb_filter_object_t hb_filter_render_sub;
 extern hb_filter_object_t hb_filter_rpu;
 extern hb_filter_object_t hb_filter_crop_scale;
@@ -489,6 +492,19 @@ extern hb_filter_object_t hb_filter_pad_vt;
 extern hb_filter_object_t hb_filter_lapsharp_vt;
 extern hb_filter_object_t hb_filter_unsharp_vt;
 #endif
+
+extern hb_filter_object_t hb_filter_adeclick;
+extern hb_filter_object_t hb_filter_adeclip;
+extern hb_filter_object_t hb_filter_afftdn;
+extern hb_filter_object_t hb_filter_anlmdn;
+extern hb_filter_object_t hb_filter_agate;
+extern hb_filter_object_t hb_filter_acompressor;
+extern hb_filter_object_t hb_filter_alimiter;
+extern hb_filter_object_t hb_filter_dialoguenhance;
+extern hb_filter_object_t hb_filter_crossfeed;
+extern hb_filter_object_t hb_filter_stereowiden;
+extern hb_filter_object_t hb_filter_loudnorm;
+extern hb_filter_object_t hb_filter_avfilter_audio;
 
 extern hb_motion_metric_object_t hb_motion_metric;
 extern hb_blend_object_t hb_blend;

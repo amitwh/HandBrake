@@ -746,9 +746,6 @@ Hint: File overwrite behaviour can be controlled in preferences. </value>
   <data name="AddPresetView_SavePictureSize" xml:space="preserve">
     <value>Dimensions:</value>
   </data>
-  <data name="AudioDefaultView_Behaviours" xml:space="preserve">
-    <value>Source Track Selection</value>
-  </data>
   <data name="AudioView_AllowPassThruOf" xml:space="preserve">
     <value>Allow passthru of:</value>
   </data>
@@ -899,8 +896,8 @@ Hint: File overwrite behaviour can be controlled in preferences. </value>
   <data name="FiltersView_SharpenTuneAuto" xml:space="preserve">
     <value>Sharpen Tune</value>
   </data>
-  <data name="FiltersView_Tune" xml:space="preserve">
-    <value>Tune:</value>
+  <data name="FilterView_Tune" xml:space="preserve">
+    <value>Tune</value>
   </data>
   <data name="Generic_Add" xml:space="preserve">
     <value>Add</value>
@@ -915,7 +912,7 @@ Hint: File overwrite behaviour can be controlled in preferences. </value>
     <value>Close</value>
   </data>
   <data name="Generic_CopyToClipboard" xml:space="preserve">
-    <value>Copy to Clipboard</value>
+    <value>Copy</value>
   </data>
   <data name="Generic_MoveLeft" xml:space="preserve">
     <value>Move Left</value>
@@ -927,7 +924,7 @@ Hint: File overwrite behaviour can be controlled in preferences. </value>
     <value>Save</value>
   </data>
   <data name="LogView_CopyClipboard" xml:space="preserve">
-    <value>Copy to clipboard</value>
+    <value>Copy</value>
   </data>
   <data name="LogView_EncodeLog" xml:space="preserve">
     <value>Encode Log</value>
@@ -1498,7 +1495,7 @@ VLC and MPC-HC are supported. Other players may also work but are not validated.
     <value>Available Languages:</value>
   </data>
   <data name="Shared_ChooseLanguages" xml:space="preserve">
-    <value>Choose Languages:</value>
+    <value>Select Languages:</value>
   </data>
   <data name="Shared_ChosenLanguages" xml:space="preserve">
     <value>Selected Languages:</value>
@@ -1702,7 +1699,7 @@ VLC and MPC-HC are supported. Other players may also work but are not validated.
     <value>Or drop a file, set of files or folder here ...</value>
   </data>
   <data name="SourceSelection_Help" xml:space="preserve">
-    <value>Help</value>
+    <value>User Guide</value>
   </data>
   <data name="Preferences" xml:space="preserve">
     <value>Preferences</value>
@@ -1744,7 +1741,7 @@ VLC and MPC-HC are supported. Other players may also work but are not validated.
     <value>_File</value>
   </data>
   <data name="MainView_HandBrakeDocs" xml:space="preserve">
-    <value>_HandBrake Documentation (HTTPS)</value>
+    <value>_HandBrake User Guide (Online)</value>
   </data>
   <data name="MainView_HelpMenu" xml:space="preserve">
     <value>_Help</value>
@@ -2348,6 +2345,15 @@ Please choose a different preset.</value>
   <data name="OptionsView_DarkThemeMode" xml:space="preserve">
     <value>Theme:</value>
   </data>
+  <data name="OptionsView_ThemeImageType" xml:space="preserve">
+    <value>Icons:</value>
+  </data>
+  <data name="ThemeImageType_Theme" xml:space="preserve">
+    <value>Match Theme</value>
+  </data>
+  <data name="ThemeImageType_Colour" xml:space="preserve">
+    <value>Colour</value>
+  </data>
   <data name="OptionsView_RequiresRestart" xml:space="preserve">
     <value>(Requires Restart)</value>
   </data>
@@ -2599,7 +2605,7 @@ Only queue files from the current version are supported.</value>
     <value>Download via Github</value>
   </data>
   <data name="MainView_NightlyBuildsUpdate" xml:space="preserve">
-    <value>Download Development Builds (HTTPS)</value>
+    <value>Download Development Builds (Online)</value>
   </data>
   <data name="OptionsView_EnableQuicksyncHyperEncode" xml:space="preserve">
     <value>Enable QuickSync Deep Link Hyper Encode</value>
@@ -2667,6 +2673,9 @@ This may be due to limitations of the file container you have selected. Please s
   <data name="OptionsView_EnableNvDecSupport" xml:space="preserve">
     <value>Prefer use of Nvidia NVDec for decoding video when using the NVEnc encoder and the hardware is available for use.</value>
   </data>
+  <data name="OptionsView_EnableAmfDecSupport" xml:space="preserve">
+    <value>Prefer use of AMF AMFDec for decoding video when using the AMFEnc encoder and the hardware is available for use.</value>
+  </data>
   <data name="Options_Hardware" xml:space="preserve">
     <value>Hardware Support</value>
   </data>
@@ -2718,9 +2727,6 @@ Alternatively, check the "Use External Player" checkbox below.</value>
   <data name="QueueStats_ShortOutputStats" xml:space="preserve">
     <value>Output: {0}, avg {1} fps</value>
   </data>
-  <data name="PresetPane_Desc" xml:space="preserve">
-    <value>Preset Description:</value>
-  </data>
   <data name="PresetPane_HidePresetDesc" xml:space="preserve">
     <value>Hide Preset Description</value>
   </data>
@@ -2759,6 +2765,12 @@ To allow multiple simultaneous encodes, turn on "Process Isolation" in Tools Men
   </data>
   <data name="PresetPane_MoveToBottom" xml:space="preserve">
     <value>Move to Bottom</value>
+  </data>
+  <data name="PresetPane_Search" xml:space="preserve">
+    <value>Search ...</value>
+  </data>
+  <data name="PresetPane_ClearSearch" xml:space="preserve">
+    <value>Clear search</value>
   </data>
   <data name="PresetPane_MoveToTop" xml:space="preserve">
     <value>Move to Top</value>
@@ -2956,7 +2968,7 @@ To allow multiple simultaneous encodes, turn on "Process Isolation" in Tools Men
     <value>Add to Queue - Quality Sweep</value>
   </data>
   <data name="LogView_ChooseLogFile" xml:space="preserve">
-    <value>Choose log file :</value>
+    <value>Log file:</value>
   </data>
   <data name="LogView_AutoScrolling" xml:space="preserve">
     <value>Auto Scroll</value>
@@ -2992,7 +3004,7 @@ To allow multiple simultaneous encodes, turn on "Process Isolation" in Tools Men
     <value>Autonaming:</value>
   </data>
   <data name="AudioDefaultsView_PassthruTrackNames" xml:space="preserve">
-    <value>Passthru Track Names</value>
+    <value>Passthru Track Names from source</value>
   </data>
   <data name="SubtitlesDefaultsView_PassthruTrackName" xml:space="preserve">
     <value>Passthru Track Names</value>
@@ -3040,5 +3052,158 @@ Do you wish to proceed?</value>
   </data>
   <data name="VideoView_SameAsSource" xml:space="preserve">
     <value>Same as source</value>
+  </data>
+  <data name="FilterView_Filter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="FilterView_Preset" xml:space="preserve">
+    <value>Preset</value>
+  </data>
+  <data name="FilterView_Custom" xml:space="preserve">
+    <value>Custom</value>
+  </data>
+  <data name="AVFilterView_PresetTooltip" xml:space="preserve">
+    <value>Presets for this filter.</value>
+  </data>
+  <data name="AVFilterView_TuneTooltip" xml:space="preserve">
+    <value>Tunes for this filter.</value>
+  </data>
+  <data name="AVFilterView_CustomOptionsTooltip" xml:space="preserve">
+    <value>Custom options for this filter.</value>
+  </data>
+  <data name="Filter_Category_Deinterlace" xml:space="preserve">
+    <value>Deinterlace</value>
+  </data>
+  <data name="Filter_Category_Denoise" xml:space="preserve">
+    <value>Denoise</value>
+  </data>
+  <data name="Filter_Category_Sharpen" xml:space="preserve">
+    <value>Sharpen</value>
+  </data>
+  <data name="Filter_detelecine" xml:space="preserve">
+    <value>Detelecine</value>
+  </data>
+  <data name="Filter_combdetect" xml:space="preserve">
+    <value>Comb Detect</value>
+  </data>
+  <data name="Filter_decomb" xml:space="preserve">
+    <value>Decomb</value>
+  </data>
+  <data name="Filter_yadif" xml:space="preserve">
+    <value>Yadif</value>
+  </data>
+  <data name="Filter_bwdif" xml:space="preserve">
+    <value>Bwdif</value>
+  </data>
+  <data name="Filter_deblock" xml:space="preserve">
+    <value>Deblock</value>
+  </data>
+  <data name="Filter_bm3d" xml:space="preserve">
+    <value>BM3D</value>
+  </data>
+  <data name="Filter_nlmeans" xml:space="preserve">
+    <value>NLMeans</value>
+  </data>
+  <data name="Filter_hqdn3d" xml:space="preserve">
+    <value>HQDN3D</value>
+  </data>
+  <data name="Filter_chromasmooth" xml:space="preserve">
+    <value>Chroma Smooth</value>
+  </data>
+  <data name="Filter_lapsharp" xml:space="preserve">
+    <value>Lapsharp</value>
+  </data>
+  <data name="Filter_unsharp" xml:space="preserve">
+    <value>Unsharp</value>
+  </data>
+  <data name="Filter_grayscale" xml:space="preserve">
+    <value>Grayscale</value>
+  </data>
+  <data name="Filter_colourspace" xml:space="preserve">
+    <value>Colourspace</value>
+  </data>
+  <data name="FiltersView_Tune" xml:space="preserve">
+    <value>Tune</value>
+  </data>
+  <data name="FilterView_AddFilter" xml:space="preserve">
+    <value>Add Filter</value>
+  </data>
+  <data name="Filter_deband" xml:space="preserve">
+    <value>Deband</value>
+  </data>
+  <data name="Filter_agate" xml:space="preserve">
+    <value>Noise Gate</value>
+  </data>
+  <data name="Filter_compressor" xml:space="preserve">
+    <value>Compressor</value>
+  </data>
+  <data name="AudioAdvancedView_Title" xml:space="preserve">
+    <value>Track Settings</value>
+  </data>
+  <data name="Filter_adeclick" xml:space="preserve">
+    <value>Declick</value>
+  </data>
+  <data name="Filter_adeclip" xml:space="preserve">
+    <value>Declip</value>
+  </data>
+  <data name="Filter_afftdn" xml:space="preserve">
+    <value>FFT Denoiser</value>
+  </data>
+  <data name="Filter_anlmdn" xml:space="preserve">
+    <value>NLMeans Denoiser</value>
+  </data>
+  <data name="Filter_acompressor" xml:space="preserve">
+    <value>Compressor</value>
+  </data>
+  <data name="Filter_alimiter" xml:space="preserve">
+    <value>Limiter</value>
+  </data>
+  <data name="Filter_dialoguenhance" xml:space="preserve">
+    <value>Dialogue Enhance</value>
+  </data>
+  <data name="Filter_crossfeed" xml:space="preserve">
+    <value>Headphone Crossfeed</value>
+  </data>
+  <data name="Filter_stereowiden" xml:space="preserve">
+    <value>Stereo Widen</value>
+  </data>
+  <data name="Filter_loudnorm" xml:space="preserve">
+    <value>Loudness Normalization</value>
+  </data>
+  <data name="LogView_ClearCompletedLogs" xml:space="preserve">
+    <value>Clear Completed</value>
+  </data>
+  <data name="LogView_LogFiles" xml:space="preserve">
+    <value>Log Files: </value>
+  </data>
+  <data name="LogView_LogDirectorySize" xml:space="preserve">
+    <value>Log Directory Size: </value>
+  </data>
+  <data name="AudioDefaultView_TrackSelectionTab" xml:space="preserve">
+    <value>Track Selection</value>
+  </data>
+  <data name="AudioDefaultView_ExplanationSubTitle" xml:space="preserve">
+    <value>When a source is loaded, these settings determine which audio tracks are added automatically and how they are configured for output.</value>
+  </data>
+  <data name="SubtitleDefaultView_ExplanationSubTitle" xml:space="preserve">
+    <value>When a source is loaded, these settings determine which subtitle tracks are added automatically and how they are configured for output.</value>
+  </data>
+  <data name="AudioDefaultView_TrackNamingTab" xml:space="preserve">
+    <value>Track Naming</value>
+  </data>
+  <data name="AudioDefaultView_PassthruBehaviourTab" xml:space="preserve">
+    <value>Passthru Behaviour</value>
+  </data>
+  <data name="AudioDefaultView_AutoNamingTooltip" xml:space="preserve">
+    <value>Automatically generate a name for the output track based on the output settings.</value>
+  </data>
+  <data name="AudioDefaultView_OtherwiseFallbackHelp" xml:space="preserve">
+    <value>If source track does not match the above codecs:</value>
+  </data>
+  <data name="AudioView_OtherwiseFallbackHelp" xml:space="preserve">
+    <value>Otherwise, if the source track does not match the above codec(s) :</value>
+  </data>
+  <data name="LogView_Search" xml:space="preserve">
+    <value>Search ...</value>
   </data>
 </root>

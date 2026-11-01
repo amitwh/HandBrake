@@ -107,6 +107,7 @@ namespace HandBrakeWPF.ViewModels
         private bool showPrePostFilenameBox;
         private bool whenDonePerformActionImmediately;
         private AppThemeMode appThemeMode;
+        private ThemeImageType selectedThemeImageType;
         private bool alwaysUseDefaultPath;
         private bool pauseOnLowBattery;
         private int lowBatteryLevel;
@@ -118,6 +119,7 @@ namespace HandBrakeWPF.ViewModels
         private int simultaneousEncodes;
         private bool enableQuickSyncHyperEncode;
         private bool enableNvDecSupport;
+        private bool enableAmfDecSupport;
         private bool useIsoDateFormat;
         private BindingList<string> excludedFileExtensions;
         private bool recursiveFolderScan;
@@ -300,6 +302,23 @@ namespace HandBrakeWPF.ViewModels
                 if (value == this.appThemeMode) return;
                 this.appThemeMode = value;
                 this.NotifyOfPropertyChange(() => this.AppThemeMode);
+            }
+        }
+
+        public BindingList<ThemeImageType> ThemeImageTypes { get; } = new BindingList<ThemeImageType>()
+                                                                      {
+                                                                          ThemeImageType.Theme,
+                                                                          ThemeImageType.Colour
+                                                                      };
+
+        public ThemeImageType SelectedThemeImageType
+        {
+            get => this.selectedThemeImageType;
+            set
+            {
+                if (value == this.selectedThemeImageType) return;
+                this.selectedThemeImageType = value;
+                this.NotifyOfPropertyChange(() => this.SelectedThemeImageType);
             }
         }
 
@@ -1154,6 +1173,8 @@ namespace HandBrakeWPF.ViewModels
 
         public bool IsNvdecAvailable => HandBrakeHardwareEncoderHelper.IsNVDecAvailable;
 
+        public bool IsAmfdecAvailable { get; } = HandBrakeHardwareEncoderHelper.IsAMFDecAvailable;
+
         public bool UseQSVDecodeForNonQSVEnc
         {
             get => this.useQsvDecodeForNonQsvEnc;
@@ -1191,6 +1212,16 @@ namespace HandBrakeWPF.ViewModels
             }
         }
 
+        public bool EnableAmfDecSupport
+        {
+            get => this.enableAmfDecSupport;
+            set
+            {
+                if (value == this.enableAmfDecSupport) return;
+                this.enableAmfDecSupport = value;
+                this.NotifyOfPropertyChange(() => this.EnableAmfDecSupport);
+            }
+        }
         /* About HandBrake */
 
         public string Version { get; } = string.Format("{0}", HandBrakeVersionHelper.GetVersion());
@@ -1537,6 +1568,7 @@ namespace HandBrakeWPF.ViewModels
             this.ShowAddAllToQueue = this.userSettingService.GetUserSetting<bool>(UserSettingConstants.ShowAddAllToQueue);
             this.ShowAddSelectionToQueue = this.userSettingService.GetUserSetting<bool>(UserSettingConstants.ShowAddSelectionToQueue);
             this.AppThemeMode = (AppThemeMode)this.userSettingService.GetUserSetting<int>(UserSettingConstants.DarkThemeMode);
+            this.SelectedThemeImageType = (ThemeImageType)this.userSettingService.GetUserSetting<int>(UserSettingConstants.ThemeImageType);
             this.SelectedPresetDisplayMode = (PresetDisplayMode)this.userSettingService.GetUserSetting<int>(UserSettingConstants.PresetMenuDisplayMode);
             this.SelectedPresetUiType = (PresetUiType)this.userSettingService.GetUserSetting<int>(UserSettingConstants.PresetUiType);
             
@@ -1624,6 +1656,7 @@ namespace HandBrakeWPF.ViewModels
             this.EnableQuickSyncLowPower = this.userSettingService.GetUserSetting<bool>(UserSettingConstants.EnableQuickSyncLowPower);
             this.EnableQuickSyncHyperEncode = this.userSettingService.GetUserSetting<bool>(UserSettingConstants.EnableQuickSyncHyperEncode);
             this.EnableNvDecSupport = this.userSettingService.GetUserSetting<bool>(UserSettingConstants.EnableNvDecSupport);
+            this.EnableAmfDecSupport = this.userSettingService.GetUserSetting<bool>(UserSettingConstants.EnableAmfDecSupport);
             this.EnableDirectXDecoding = this.userSettingService.GetUserSetting<bool>(UserSettingConstants.EnableDirectXDecoding);
 
             // #############################
@@ -1822,6 +1855,7 @@ namespace HandBrakeWPF.ViewModels
             this.userSettingService.SetUserSetting(UserSettingConstants.ShowStatusInTitleBar, this.ShowStatusInTitleBar);
             this.userSettingService.SetUserSetting(UserSettingConstants.ShowPreviewOnSummaryTab, this.ShowPreviewOnSummaryTab);
             this.userSettingService.SetUserSetting(UserSettingConstants.DarkThemeMode, this.AppThemeMode);
+            this.userSettingService.SetUserSetting(UserSettingConstants.ThemeImageType, this.SelectedThemeImageType);
             this.userSettingService.SetUserSetting(UserSettingConstants.UiLanguage, this.SelectedLanguage?.Culture);
             this.userSettingService.SetUserSetting(UserSettingConstants.RightToLeftUi, this.SelectedRightToLeftMode);
 
@@ -1870,6 +1904,7 @@ namespace HandBrakeWPF.ViewModels
             this.userSettingService.SetUserSetting(UserSettingConstants.UseQSVDecodeForNonQSVEnc, this.UseQSVDecodeForNonQSVEnc);
             this.userSettingService.SetUserSetting(UserSettingConstants.EnableQuickSyncHyperEncode, this.EnableQuickSyncHyperEncode);
             this.userSettingService.SetUserSetting(UserSettingConstants.EnableNvDecSupport, this.EnableNvDecSupport);
+            this.userSettingService.SetUserSetting(UserSettingConstants.EnableAmfDecSupport, this.EnableAmfDecSupport);
             this.userSettingService.SetUserSetting(UserSettingConstants.EnableDirectXDecoding, this.EnableDirectXDecoding);
             this.userSettingService.SetUserSetting(UserSettingConstants.EnableQuickSyncLowPower, this.EnableQuickSyncLowPower);
 

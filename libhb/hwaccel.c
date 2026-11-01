@@ -10,6 +10,7 @@
 #include "handbrake/hwaccel.h"
 #include "handbrake/handbrake.h"
 #include "handbrake/qsv_common.h"
+#include "handbrake/vce_common.h"
 
 static hb_buffer_t * upload(void *hw_frames_ctx, hb_buffer_t **buf_in)
 {
@@ -149,17 +150,29 @@ static int is_encoder_supported(hb_hwaccel_t *hwaccel, int encoder)
         }
         encoders++;
     }
+
+    hb_deep_log(2, "hwaccel: encoder is not supported");
     return 0;
 }
 
 static int is_rotation_supported(hb_hwaccel_t *hwaccel, int rotation)
 {
-    return rotation != HB_ROTATION_0 && (hwaccel->caps & HB_HWACCEL_CAP_ROTATE) == 0 ? 0 : 1;
+    int supported = rotation != HB_ROTATION_0 && (hwaccel->caps & HB_HWACCEL_CAP_ROTATE) == 0 ? 0 : 1;
+    if (supported == 0)
+    {
+        hb_deep_log(2, "hwaccel: rotation is not supported");
+    }
+    return supported;
 }
 
 static int is_color_range_supported(hb_hwaccel_t *hwaccel, int color_range)
 {
-    return color_range != 0 && (hwaccel->caps & HB_HWACCEL_CAP_COLOR_RANGE) == 0 ? 0 : 1;
+    int supported = color_range != 0 && (hwaccel->caps & HB_HWACCEL_CAP_COLOR_RANGE) == 0 ? 0 : 1;
+    if (supported == 0)
+    {
+        hb_deep_log(2, "hwaccel: color range conversion is not supported");
+    }
+    return supported;
 }
 
 int hb_hwaccel_can_use_full_hw_pipeline(hb_hwaccel_t *hwaccel, hb_list_t *list_filter, int encoder, int rotation, int color_range)
@@ -197,6 +210,10 @@ int hb_hwaccel_is_available(hb_hwaccel_t *hwaccel, int codec_id)
     }
 
     const AVCodec *codec = hwaccel->find_decoder(codec_id);
+    if (codec == NULL)
+    {
+        return 0;
+    }
     const AVCodecHWConfig *config = get_hw_config(codec, hwaccel->type);
 
     return config != NULL;
@@ -206,6 +223,12 @@ enum AVPixelFormat hw_hwaccel_get_hw_format(AVCodecContext *ctx, const enum AVPi
 {
     const hb_job_t *job = ctx->opaque;
     const enum AVPixelFormat *p;
+
+    if (job && job->hw_pix_fmt == AV_PIX_FMT_NONE &&
+        (job->hw_accel->caps & HB_HWACCEL_CAP_SYSTEM_MEMORY))
+    {
+        return ctx->sw_pix_fmt;
+    }
 
     for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++)
     {
@@ -321,14 +344,19 @@ int hb_hwaccel_hwframes_ctx_init(AVCodecContext *ctx,
 #if HB_PROJECT_FEATURE_QSV
     if (hw_pix_fmt == AV_PIX_FMT_QSV)
     {
-        ctx->extra_hw_frames = HB_QSV_FFMPEG_EXTRA_HW_FRAMES;
         frames_ctx->initial_pool_size = HB_QSV_FFMPEG_INITIAL_POOL_SIZE;
 
         AVQSVFramesContext *frames_hwctx = frames_ctx->hwctx;
         frames_hwctx->frame_type = MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET;
     }
 #endif
-
+#if HB_PROJECT_FEATURE_AMFDEC
+    if (hw_pix_fmt == AV_PIX_FMT_AMF_SURFACE)
+    {
+        ctx->extra_hw_frames = HB_VCE_FFMPEG_EXTRA_HW_FRAMES;
+        frames_ctx->initial_pool_size = HB_VCE_FFMPEG_INITIAL_POOL_SIZE;
+    }
+#endif
     if (av_hwframe_ctx_init(ctx->hw_frames_ctx) != 0)
     {
         hb_error("hwaccel: failed to initialize hw frames context - av_hwframe_ctx_init");

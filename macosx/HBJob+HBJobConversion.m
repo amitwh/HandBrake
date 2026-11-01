@@ -19,7 +19,9 @@
 #import "HBRange.h"
 #import "HBVideo.h"
 #import "HBPicture.h"
-#import "HBFilters.h"
+#import "HBVideoFilters.h"
+#import "HBAudioFilters.h"
+#import "HBFilter.h"
 #import "HBAudio.h"
 #import "HBSubtitles.h"
 
@@ -453,7 +455,16 @@
             audio.out.compression_level         = hb_audio_compression_get_default(audio.out.codec);
             audio.out.mixdown                   = audioTrack.mixdown;
             audio.out.normalize_mix_level       = 0;
-            audio.out.bitrate                   = audioTrack.bitRate;
+            if (audioTrack.mode == HBAudioEncoderModeQuality)
+            {
+                audio.out.quality = audioTrack.quality;
+                audio.out.bitrate = 0;
+            }
+            else
+            {
+                audio.out.bitrate = audioTrack.bitRate;
+                audio.out.quality = HB_INVALID_AUDIO_QUALITY;
+            }
             audio.out.samplerate                = sampleRateToUse;
             audio.out.dither_method             = hb_audio_dither_get_default();
             audio.out.name                      = audioTrack.title.UTF8String;
@@ -481,6 +492,18 @@
                 audio.out.dynamic_range_compression = 0;
             }
 
+            hb_list_t *filter_list = audio.out.list_filter;
+            for (HBFilter *f in audioTrack.filters.filters)
+            {
+                hb_dict_t *filter_dict = hb_generate_filter_settings(f.filterID,
+                                                                     f.preset.UTF8String,
+                                                                     f.tune.UTF8String,
+                                                                     f.custom.UTF8String);
+                hb_filter_object_t *filter = hb_filter_init(f.filterID);
+                hb_add_filter_dict(filter_list, filter, filter_dict);
+                hb_value_free(&filter_dict);
+            }
+
             hb_audio_add(job, &audio);
             hb_audio_config_close(&audio);
         }
@@ -488,137 +511,21 @@
 
     // Now lets call the filters if applicable.
     hb_filter_object_t *filter;
-
-    // Detelecine
-    if (![self.filters.detelecine isEqualToString:@"off"])
-    {
-        int filter_id = HB_FILTER_DETELECINE;
-        hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id,
-                                                             self.filters.detelecine.UTF8String,
-                                                             NULL,
-                                                             self.filters.detelecineCustomString.UTF8String);
-        filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
-        hb_value_free(&filter_dict);
-    }
-
-    // Comb Detection
-    if (![self.filters.combDetection isEqualToString:@"off"])
-    {
-        int filter_id = HB_FILTER_COMB_DETECT;
-        hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id,
-                                                             self.filters.combDetection.UTF8String,
-                                                             NULL,
-                                                             self.filters.combDetectionCustomString.UTF8String);
-        filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
-        hb_value_free(&filter_dict);
-    }
-
-    // Deinterlace
-    if (![self.filters.deinterlace isEqualToString:@"off"])
-    {
-        int filter_id = HB_FILTER_DECOMB;
-        if ([self.filters.deinterlace isEqualToString:@"deinterlace"])
-        {
-            filter_id = HB_FILTER_YADIF;
-        }
-        else if ([self.filters.deinterlace isEqualToString:@"bwdif"])
-        {
-            filter_id = HB_FILTER_BWDIF;
-        }
-
-        hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id,
-                                                            self.filters.deinterlacePreset.UTF8String,
-                                                            NULL,
-                                                            self.filters.deinterlaceCustomString.UTF8String);
-        filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
-        hb_value_free(&filter_dict);
-    }
+    hb_list_t *filter_list = job->list_filter;
 
     // Add framerate shaping filter
     filter = hb_filter_init(HB_FILTER_VFR);
-    hb_add_filter(job, filter, [[NSString stringWithFormat:@"mode=%d:rate=%d/%d",
+    hb_add_filter(filter_list, filter, [[NSString stringWithFormat:@"mode=%d:rate=%d/%d",
                                  fps_mode, fps_num, fps_den] UTF8String]);
-
-    // Deblock
-    if (![self.filters.deblock isEqualToString:@"off"])
-    {
-        int filter_id = HB_FILTER_DEBLOCK;
-        hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id,
-                                                             self.filters.deblock.UTF8String,
-                                                             self.filters.deblockTune.UTF8String,
-                                                             self.filters.deblockCustomString.UTF8String);
-        filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
-        hb_value_free(&filter_dict);
-    }
-
-    // Denoise
-    if (![self.filters.denoise isEqualToString:@"off"])
-    {
-        int filter_id = HB_FILTER_HQDN3D;
-        if ([self.filters.denoise isEqualToString:@"nlmeans"])
-        {
-            filter_id = HB_FILTER_NLMEANS;
-        }
-
-        hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id,
-                                                  self.filters.denoisePreset.UTF8String,
-                                                  self.filters.denoiseTune.UTF8String,
-                                                  self.filters.denoiseCustomString.UTF8String);
-        filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
-        hb_dict_free(&filter_dict);
-    }
-
-    // Chroma Smooth
-    if (![self.filters.chromaSmooth isEqualToString:@"off"])
-    {
-        int filter_id = HB_FILTER_CHROMA_SMOOTH;
-        hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id,
-                                                             self.filters.chromaSmooth.UTF8String,
-                                                             self.filters.chromaSmoothTune.UTF8String,
-                                                             self.filters.chromaSmoothCustomString.UTF8String);
-        filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
-        hb_value_free(&filter_dict);
-    }
 
     // Add Crop/Scale filter
     filter = hb_filter_init(HB_FILTER_CROP_SCALE);
-    hb_add_filter( job, filter,
+    hb_add_filter( filter_list, filter,
                    [NSString stringWithFormat:
                     @"width=%d:height=%d:crop-top=%d:crop-bottom=%d:crop-left=%d:crop-right=%d",
                     self.picture.width, self.picture.height,
                     self.picture.cropTop, self.picture.cropBottom,
                     self.picture.cropLeft, self.picture.cropRight].UTF8String);
-
-    // Sharpen
-    if (![self.filters.sharpen isEqualToString:@"off"])
-    {
-        int filter_id = HB_FILTER_UNSHARP;
-        if ([self.filters.sharpen isEqualToString:@"lapsharp"])
-        {
-            filter_id = HB_FILTER_LAPSHARP;
-        }
-
-        hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id,
-                                                  self.filters.sharpenPreset.UTF8String,
-                                                  self.filters.sharpenTune.UTF8String,
-                                                  self.filters.sharpenCustomString.UTF8String);
-        filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
-        hb_dict_free(&filter_dict);
-    }
-
-    // Grayscale
-    if (self.filters.grayscale)
-    {
-        filter = hb_filter_init(HB_FILTER_GRAYSCALE);
-        hb_add_filter(job, filter, NULL);
-    }
 
     // Rotate
     if (self.picture.angle || self.picture.flip)
@@ -630,7 +537,7 @@
                                                               self.picture.angle, self.picture.flip].UTF8String);
 
         filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
+        hb_add_filter_dict(filter_list, filter, filter_dict);
         hb_dict_free(&filter_dict);
     }
 
@@ -662,20 +569,18 @@
         hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id, NULL, NULL, settings.UTF8String);
 
         filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
+        hb_add_filter_dict(filter_list, filter, filter_dict);
         hb_dict_free(&filter_dict);
     }
 
-    // Colorspace
-    if (![self.filters.colorspace isEqualToString:@"off"])
+    for (HBFilter *f in self.filters.filters)
     {
-        int filter_id = HB_FILTER_COLORSPACE;
-        hb_dict_t *filter_dict = hb_generate_filter_settings(filter_id,
-                                                             self.filters.colorspace.UTF8String,
-                                                             NULL,
-                                                             self.filters.colorspaceCustomString.UTF8String);
-        filter = hb_filter_init(filter_id);
-        hb_add_filter_dict(job, filter, filter_dict);
+        hb_dict_t *filter_dict = hb_generate_filter_settings(f.filterID,
+                                                             f.preset.UTF8String,
+                                                             f.tune.UTF8String,
+                                                             f.custom.UTF8String);
+        filter = hb_filter_init(f.filterID);
+        hb_add_filter_dict(filter_list, filter, filter_dict);
         hb_value_free(&filter_dict);
     }
 

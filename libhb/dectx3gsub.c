@@ -35,7 +35,8 @@ typedef enum {
 } FaceStyleFlag;
 
 #define MAX_MARKUP_LEN 40
-#define SSA_PREAMBLE_LEN 24
+/* Maximum SSA prefix length, including the NUL terminator. */
+#define SSA_PREAMBLE_LEN 30
 
 typedef struct {
     uint16_t startChar;       // NOTE: indices in terms of *character* (not: byte) positions
@@ -51,7 +52,6 @@ typedef struct {
 #define READ_U16()      (pos[0] << 8) | pos[1];                                               pos += 2;
 #define READ_U32()      ((uint32_t)pos[0] << 24) | (pos[1] << 16) | (pos[2] << 8) | pos[3];   pos += 4;
 #define READ_ARRAY(n)   pos;                                                                  pos += n;
-#define SKIP_ARRAY(n)   pos += n;
 
 #define WRITE_CHAR(c)       {dst[0]=c;                                              dst += 1;}
 
@@ -92,26 +92,58 @@ static hb_buffer_t *tx3g_decode_to_ssa(hb_work_private_t *pv, hb_buffer_t *in)
      *
      * Look for a single StyleBox ('styl') and read all contained StyleRecords.
      * Ignore all other box types.
-     *
-     * NOTE: Buffer overflows on read are not checked.
      */
+    if (in->size < 2)
+    {
+        goto fail;
+    }
+
     uint16_t textLength = READ_U16();
+
+    if (in->size < textLength + 2)
+    {
+        goto fail;
+    }
+
     uint8_t *text = READ_ARRAY(textLength);
     while ( pos < end )
     {
         /*
          * Read TextSampleModifierBox
          */
+        if (end - pos < 4)
+        {
+            goto fail;
+        }
+
+        // The box size includes the 8 byte size and type header
+        uint8_t *box_start = pos;
         uint32_t size = READ_U32();
+
+        if (size > end - box_start)
+        {
+            goto fail;
+        }
         if ( size == 0 )
         {
-            size = pos - end;   // extends to end of packet
+            size = end - box_start;   // extends to end of packet
         }
         if ( size == 1 )
         {
             hb_log( "dectx3gsub: TextSampleModifierBox has unsupported large size" );
             break;
         }
+        if (size < 8)
+        {
+            goto fail;
+        }
+        uint8_t *box_end = box_start + size;
+
+        if (end - pos < 4)
+        {
+            goto fail;
+        }
+
         uint32_t type = READ_U32();
         if (type == FOURCC("uuid"))
         {
@@ -126,8 +158,13 @@ static hb_buffer_t *tx3g_decode_to_ssa(hb_work_private_t *pv, hb_buffer_t *in)
             if ( numStyleRecords != 0 )
             {
                 hb_log( "dectx3gsub: found additional StyleBoxes on subtitle; skipping" );
-                SKIP_ARRAY(size);
+                pos = box_end;
                 continue;
+            }
+
+            if (box_end - pos < 2)
+            {
+                goto fail;
             }
 
             numStyleRecords = READ_U16();
@@ -138,6 +175,11 @@ static hb_buffer_t *tx3g_decode_to_ssa(hb_work_private_t *pv, hb_buffer_t *in)
                 {
                     goto fail;
                 }
+            }
+
+            if (box_end - pos < numStyleRecords * 12)
+            {
+                goto fail;
             }
 
             int i;
@@ -151,17 +193,17 @@ static hb_buffer_t *tx3g_decode_to_ssa(hb_work_private_t *pv, hb_buffer_t *in)
                 styleRecords[i].textColorRGBA     = READ_U32();
             }
         }
-        else
-        {
-            // Found some other kind of TextSampleModifierBox. Skip it.
-            SKIP_ARRAY(size);
-        }
+        // Skip any remaining data in this box, or the whole box if it is
+        // some other kind of TextSampleModifierBox
+        pos = box_end;
     }
 
     /*
      * Copy text to output buffer, and add HTML markup for the style records
      */
-    int maxOutputSize = textLength + SSA_PREAMBLE_LEN + (numStyleRecords * MAX_MARKUP_LEN);
+    // Newlines expand to two bytes.
+    int maxOutputSize = textLength * 2 + SSA_PREAMBLE_LEN +
+                        (numStyleRecords * MAX_MARKUP_LEN);
     out = hb_buffer_init( maxOutputSize );
     if ( out == NULL )
         goto fail;
@@ -231,9 +273,12 @@ static hb_buffer_t *tx3g_decode_to_ssa(hb_work_private_t *pv, hb_buffer_t *in)
     out->s.stop         = in->s.stop;
     out->s.scr_sequence = in->s.scr_sequence;
 
-fail:
     free(styleRecords);
+    return out;
 
+fail:
+    hb_log("dectx3gsub: failed to decode packet");
+    free(styleRecords);
     return out;
 }
 
@@ -241,7 +286,6 @@ fail:
 #undef READ_U16
 #undef READ_U32
 #undef READ_ARRAY
-#undef SKIP_ARRAY
 
 #undef WRITE_CHAR
 #undef WRITE_START_TAG

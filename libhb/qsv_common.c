@@ -136,7 +136,7 @@ static hb_triplet_t hb_qsv_h265_profiles[] =
 {
     { "Main",               "main",             MFX_PROFILE_HEVC_MAIN,   },
     { "Main 10",            "main10",           MFX_PROFILE_HEVC_MAIN10, },
-    { "Main Still Picture", "mainstillpicture", MFX_PROFILE_HEVC_MAINSP, },
+    { "Main Still Picture", "mainsp",           MFX_PROFILE_HEVC_MAINSP, },
     { NULL,                                                              },
 };
 static const char * const hb_qsv_h265_profiles_names_10bit[] = {
@@ -2293,6 +2293,7 @@ static int are_filters_supported(hb_list_t *filters)
         hb_filter_object_t *filter = hb_list_item(filters, i);
         switch (filter->id)
         {
+            case HB_FILTER_ADAPTER:
             // pixel format conversion is done via VPP filter
             case HB_FILTER_FORMAT:
             // cropping and scaling always done via VPP filter
@@ -2302,8 +2303,8 @@ static int are_filters_supported(hb_list_t *filters)
                 break;
             case HB_FILTER_VFR:
             {
-                // Mode 0 doesn't require access to the frame data
-                int mode = hb_dict_get_int(filter->settings, "mode");
+                // Frame drop mode 0 doesn't require access to the frame data
+                int mode = hb_dict_get_int(filter->settings, "frame-drop-mode");
                 if (mode == 0)
                 {
                     break;
@@ -2741,6 +2742,26 @@ int hb_qsv_apply_encoder_options(qsv_data_t * qsv_data, hb_job_t *job, AVDiction
         return ret;
     }
 
+    // hb_qsv_select_ffmpeg_options() and the option parser read these fields
+    videoParam.mfx.CodecId             = qsv_data->qsv_info->codec_id;
+    videoParam.mfx.FrameInfo.PicStruct = MFX_PICSTRUCT_PROGRESSIVE;
+    if (job->vcodec == HB_VCODEC_FFMPEG_QSV_H265_10BIT)
+    {
+        videoParam.mfx.CodecProfile = MFX_PROFILE_HEVC_MAIN10;
+    }
+
+    if (hb_qsv_profile_parse(&qsv_data->param, qsv_data->qsv_info,
+                             job->encoder_profile, job->vcodec))
+    {
+        hb_error("hb_qsv_apply_encoder_options: bad profile %s", job->encoder_profile);
+        return -1;
+    }
+    if (job->encoder_profile != NULL && *job->encoder_profile &&
+        strcasecmp(job->encoder_profile, "auto"))
+    {
+        av_dict_set_int(av_opts, "profile", videoParam.mfx.CodecProfile, 0);
+    }
+
     if (job->encoder_options != NULL && *job->encoder_options)
     {
         hb_dict_t *options_list;
@@ -2781,6 +2802,9 @@ int hb_qsv_apply_encoder_options(qsv_data_t * qsv_data, hb_job_t *job, AVDiction
         }
         hb_dict_free(&options_list);
     }
+
+    // low_power may have been changed by the user options above
+    videoParam.mfx.LowPower = qsv_data->param.low_power ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
 
     ret = hb_qsv_select_ffmpeg_options(qsv_data, job, av_opts);
     if(ret)
@@ -2875,7 +2899,7 @@ int hb_qsv_param_parse(AVDictionary** av_opts, hb_qsv_param_t *param, hb_qsv_inf
         ivalue = hb_qsv_atoi(value, &error);
         if (!error)
         {
-            av_dict_set_int(av_opts, "bf", HB_QSV_CLIP3(-1, 32, ivalue), 0);
+            param->gop.gop_ref_dist = HB_QSV_CLIP3(-1, 32, ivalue);
         }
     }
     else if (!strcasecmp(key, "gop-pic-size") ||
@@ -2884,7 +2908,7 @@ int hb_qsv_param_parse(AVDictionary** av_opts, hb_qsv_param_t *param, hb_qsv_inf
         ivalue = hb_qsv_atoi(value, &error);
         if (!error)
         {
-            av_dict_set_int(av_opts, "g", HB_QSV_CLIP3(-1, UINT16_MAX, ivalue), 0);
+            param->gop.gop_pic_size = HB_QSV_CLIP3(-1, UINT16_MAX, ivalue);
         }
     }
     else if (!strcasecmp(key, "b-pyramid"))
@@ -3193,7 +3217,7 @@ int hb_qsv_param_parse(AVDictionary** av_opts, hb_qsv_param_t *param, hb_qsv_inf
             ivalue = hb_qsv_atoi(value, &error);
             if (!error)
             {
-                av_dict_set_int(av_opts, "look_ahead_depth", HB_QSV_CLIP3(10, 100, ivalue), 0);
+                param->codingOption2.LookAheadDepth = HB_QSV_CLIP3(10, 100, ivalue);
             }
         }
         else
@@ -3386,7 +3410,7 @@ int hb_qsv_profile_parse(hb_qsv_param_t *param, hb_qsv_info_t *info, const char 
                 profile = hb_triplet4key(hb_qsv_h265_profiles, profile_key);
 
                 /* HEVC10 supported starting from KBL/G6 */
-                if (profile->value == MFX_PROFILE_HEVC_MAIN10 &&
+                if (profile != NULL && profile->value == MFX_PROFILE_HEVC_MAIN10 &&
                     hb_qsv_hardware_generation(hb_qsv_get_platform(hb_qsv_get_adapter_index())) < QSV_G6)
                 {
                     hb_log("qsv: HEVC Main10 is not supported on this platform");
@@ -3897,7 +3921,7 @@ hb_hwaccel_t hb_hwaccel_qsv =
     .hw_pix_fmt   = AV_PIX_FMT_QSV,
     .can_filter   = are_filters_supported,
     .find_decoder = find_decoder,
-    .caps         = HB_HWACCEL_CAP_ROTATE | HB_HWACCEL_CAP_COLOR_RANGE
+    .caps         = HB_HWACCEL_CAP_ROTATE | HB_HWACCEL_CAP_COLOR_RANGE | HB_HWACCEL_CAP_SYSTEM_MEMORY
 };
 
 #else // HB_PROJECT_FEATURE_QSV

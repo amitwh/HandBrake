@@ -415,8 +415,10 @@ static hb_buffer_t * CreateBlackBuf( sync_stream_t * stream,
             if (job->hw_pix_fmt != AV_PIX_FMT_NONE)
             {
                 AVBufferRef *hw_frames_ctx = hb_hwaccel_init_hw_frames_ctx(job->hw_device_ctx,
-                                                                           job->input_pix_fmt, job->hw_pix_fmt,
-                                                                           job->width, job->height, 0);
+                                                                           job->input_pix_fmt,
+                                                                           job->hw_pix_fmt,
+                                                                           job->title->geometry.width,
+                                                                           job->title->geometry.height, 0);
                 buf = job->hw_accel->upload(hw_frames_ctx, &buf);
                 av_buffer_unref(&hw_frames_ctx);
             }
@@ -478,11 +480,7 @@ static void alignStream( sync_common_t * common, sync_stream_t * stream,
     hb_buffer_t * buf = hb_list_item(stream->in_queue, 0);
     int64_t gap = buf->s.start - pts;
 
-    if (gap == 0)
-    {
-        return;
-    }
-    if (gap < 0)
+    if (gap <= 0)
     {
         int ii;
 
@@ -510,13 +508,17 @@ static void alignStream( sync_common_t * common, sync_stream_t * stream,
                     else
                     {
                         hb_list_rem(other_stream->in_queue, buf);
+                        saveChap(other_stream, buf);
                         hb_buffer_close(&buf);
                     }
                 }
                 else
                 {
                     // Fill the partial frame gap left after dropping frames
-                    alignStream(common, other_stream, pts);
+                    if (buf->s.start > pts)
+                    {
+                        alignStream(common, other_stream, pts);
+                    }
                     break;
                 }
             }
@@ -567,7 +569,7 @@ static void alignStreams( sync_common_t * common, int64_t pts )
     if (common->job->align_av_start)
     {
         int64_t first_pts = AV_NOPTS_VALUE;
-        int     audio_passthru = 0;
+        int64_t passthru_pts = AV_NOPTS_VALUE;
 
         for (ii = 0; ii < common->stream_count; ii++)
         {
@@ -595,13 +597,12 @@ static void alignStreams( sync_common_t * common, int64_t pts )
                 // To align with a passthru audio stream, we must drop
                 // buffers from all other streams that are before
                 // the first buffer in the passthru audio stream.
-                audio_passthru = 1;
-                if (first_pts < buf->s.start)
+                if (passthru_pts == AV_NOPTS_VALUE || passthru_pts < buf->s.start)
                 {
-                    first_pts = buf->s.start;
+                    passthru_pts = buf->s.start;
                 }
             }
-            else if (!audio_passthru)
+            else
             {
                 // Find the smallest initial pts of all streams when
                 // there is *no* passthru audio.
@@ -614,6 +615,12 @@ static void alignStreams( sync_common_t * common, int64_t pts )
                     first_pts = buf->s.start;
                 }
             }
+        }
+        if (passthru_pts != AV_NOPTS_VALUE)
+        {
+            // Passthru audio can't be padded, so it sets the start point
+            // regardless of where the other streams start.
+            first_pts = passthru_pts;
         }
         if (first_pts != AV_NOPTS_VALUE)
         {
@@ -2270,9 +2277,9 @@ static int InitSubtitle( sync_common_t * common, int index )
     memset(&pv->stream->subtitle.sanitizer, 0,
            sizeof(pv->stream->subtitle.sanitizer));
     if (subtitle->format == TEXTSUB && subtitle->config.dest == PASSTHRUSUB &&
-        (common->job->mux & HB_MUX_MASK_MP4))
+        (common->job->mux & HB_MUX_MASK_ISOBFF_FAMILY))
     {
-        // Merge overlapping subtitles since mpv tx3g does not support them
+        // Merge overlapping subtitles since tx3g does not support them
         pv->stream->subtitle.sanitizer.merge = 1;
     }
     // PGS & DVB subtitles don't need to be linked because there are explicit
@@ -2571,6 +2578,69 @@ static void syncVideoClose( hb_work_object_t * w )
     w->private_data = NULL;
 }
 
+static char * strchr_n(char *s, int c, int count)
+{
+    for (int i = 0; i < count; i++)
+    {
+        s = strchr(s, c);
+        if (s == NULL)
+        {
+            break;
+        }
+        s++;
+    }
+
+    return s;
+}
+
+static int strcmp_len(char *a, size_t len_a, char *b, size_t len_b)
+{
+    if (len_a != len_b)
+    {
+        return 1;
+    }
+
+    size_t len = MIN(len_a, len_b);
+    for (int i = 0; i < len; i++)
+    {
+        if (a[i] != b[i])
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static char * next_style_if_different(char *a, char *b)
+{
+    char *start_a = NULL, *end_a = NULL;
+    char *start_b = NULL, *end_b = NULL;
+
+    start_a = strchr_n(a, ',', 2);
+    end_a   = strchr_n(a, ',', 3);
+
+    start_b = strchr_n(b, ',', 2);
+    end_b   = strchr_n(b, ',', 3);
+
+    if (start_a == NULL || end_a == NULL ||
+        start_b == NULL || end_b == NULL)
+    {
+        return NULL;
+    }
+
+    size_t style_a_len = end_a - start_a - 1;
+    size_t style_b_len = end_b - start_b - 1;
+
+    if (strcmp_len(start_a, style_a_len,
+                   start_b, style_b_len))
+    {
+        return hb_strndup(start_b, style_b_len);
+    }
+
+    return NULL;
+}
+
 static hb_buffer_t * merge_ssa(hb_buffer_t *a, hb_buffer_t *b)
 {
     int len, ii;
@@ -2590,7 +2660,10 @@ static hb_buffer_t * merge_ssa(hb_buffer_t *a, hb_buffer_t *b)
         return hb_buffer_dup(a);
     }
 
-    buf = hb_buffer_init(a->size + b->size);
+    char *style = next_style_if_different((char *)a->data, (char *)b->data);
+    size_t style_len = style ? strlen(style) : 0;
+
+    buf = hb_buffer_init(a->size + b->size + style_len);
     buf->s = a->s;
 
     // Find the text in the second SSA sub
@@ -2617,7 +2690,15 @@ static hb_buffer_t * merge_ssa(hb_buffer_t *a, hb_buffer_t *b)
         }
         // Text subtitles are SSA internally.  Use SSA newline code
         // and force style reset at beginning of new line.
-        len = snprintf((char*)buf->data, buf->size, "%s\\N{\\r}%s", a->data, text);
+        if (style_len)
+        {
+            len = snprintf((char*)buf->data, buf->size, "%s\\N{\\r%s}%s", a->data, style, text);
+        }
+        else
+        {
+            len = snprintf((char*)buf->data, buf->size, "%s\\N{\\r}%s", a->data, text);
+        }
+
         if (len >= 0)
             buf->size = len + 1;
     }
@@ -2626,6 +2707,8 @@ static hb_buffer_t * merge_ssa(hb_buffer_t *a, hb_buffer_t *b)
         memcpy(buf->data, a->data, a->size);
         buf->size = a->size;
     }
+
+    free(style);
 
     return buf;
 }

@@ -77,7 +77,7 @@ automatically (and `--join-copy force` refuses with an explanation).
 ## Hardware encode/decode (AMD APU / Mesa)
 
 ```bash
-HandBrakeCLI -i in.mp4 -e vaapi_h264 -o out.mp4          # also vaapi_h265, vaapi_h265_10bit
+HandBrakeCLI -i in.mp4 -e vaapi_h264 -o out.mp4          # also vaapi_hevc, vaapi_av1, vaapi_VP8, vaapi_VP9
 HandBrakeCLI -i in.hevc --enable-hw-decoding vaapi -e vaapi_h264 -o out.mp4
 ```
 

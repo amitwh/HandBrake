@@ -82,6 +82,7 @@ hb_filter_object_t hb_filter_yadif_vt =
     .id                = HB_FILTER_YADIF_VT,
     .enforce_order     = 1,
     .name              = "Yadif (VideoToolbox)",
+    .short_name        = "yadif_vt",
     .settings          = NULL,
     .init              = yadif_vt_init,
     .work              = deinterlace_vt_work,
@@ -94,6 +95,7 @@ hb_filter_object_t hb_filter_bwdif_vt =
     .id                = HB_FILTER_BWDIF_VT,
     .enforce_order     = 1,
     .name              = "Bwdif (VideoToolbox)",
+    .short_name        = "bwdif_vt",
     .settings          = NULL,
     .init              = bwdif_vt_init,
     .work              = deinterlace_vt_work,
@@ -116,7 +118,7 @@ static int bwdif_vt_init(hb_filter_object_t *filter,
 static int deinterlace_vt_init(hb_filter_object_t *filter,
                                hb_filter_init_t   *init)
 {
-    filter->private_data = calloc(sizeof(struct hb_filter_private_s), 1);
+    filter->private_data = calloc(1, sizeof(struct hb_filter_private_s));
     if (filter->private_data == NULL)
     {
         hb_error("deinterlace_vt: calloc failed");

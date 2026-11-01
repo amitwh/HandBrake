@@ -9,6 +9,7 @@
 #import "HBJob.h"
 #import "HBCodingUtilities.h"
 #import "HBTitle.h"
+#import "HBAudioFilters.h"
 #import "handbrake/handbrake.h"
 
 @interface HBAudioTrack ()
@@ -27,7 +28,10 @@
         _container = HB_MUX_MKV;
         _sampleRate = 0;
         _bitRate = 160;
+        _quality = HB_INVALID_AUDIO_QUALITY;
+        _mode = HBAudioEncoderModeABR;
         _mixdown = HB_AMIXDOWN_STEREO;
+        _filters = [[HBAudioFilters alloc] init];
     }
     return self;
 }
@@ -43,6 +47,7 @@
         _dataSource = dataSource;
         _sourceTrackIdx = index;
         _container = container;
+        _filters = [[HBAudioFilters alloc] init];
 
         [self validateSettings];
 
@@ -59,6 +64,7 @@
         if (self.encoder == 0)
         {
             self.encoder = HB_ACODEC_CA_AAC;
+            self.quality = HB_INVALID_AUDIO_QUALITY;
             self.bitRate = 160;
         }
         else
@@ -72,6 +78,7 @@
         self.mixdown = 0;
         self.sampleRate = 0;
         self.bitRate = -1;
+        self.quality = HB_INVALID_AUDIO_QUALITY;
     }
 }
 
@@ -131,8 +138,17 @@
         self.validating = YES;
         self.mixdown = [self sanitizeMixdownValue:self.mixdown];
         self.sampleRate = [self sanitizeSamplerateValue:self.sampleRate];
-        self.bitRate = [self sanitizeBitrateValue:self.bitRate];
+        self.mode = [self sanitizeModeValue:self.mode];
+        if (self.mode == HBAudioEncoderModeABR)
+        {
+            self.bitRate = [self sanitizeBitrateValue:self.bitRate];
+        }
+        else
+        {
+            self.quality = [self sanitizeQualityValue:self.quality];
+        }
         self.title = [self sanitizeTrackNameValue:self.title];
+        [self sanitizeFilters:encoder];
         [self.delegate encoderChanged];
         self.validating = NO;
     }
@@ -178,6 +194,34 @@
         [[self.undo prepareWithInvocationTarget:self] setBitRate:_bitRate];
     }
     _bitRate = bitRate;
+
+    if (!(self.undo.isUndoing || self.undo.isRedoing) && !self.validating)
+    {
+        self.mode = HBAudioEncoderModeABR;
+    }
+}
+
+- (void)setQuality:(double)quality
+{
+    if (quality != _quality)
+    {
+        [[self.undo prepareWithInvocationTarget:self] setQuality:_quality];
+    }
+    _quality = quality;
+
+    if (!(self.undo.isUndoing || self.undo.isRedoing) && !self.validating)
+    {
+        self.mode = HBAudioEncoderModeQuality;
+    }
+}
+
+- (void)setMode:(HBAudioEncoderMode)mode
+{
+    if (mode != _mode)
+    {
+        [[self.undo prepareWithInvocationTarget:self] setMode:_mode];
+    }
+    _mode = mode;
 }
 
 - (void)setGain:(double)gain
@@ -226,6 +270,12 @@
         [[self.undo prepareWithInvocationTarget:self] setTitle:_title];
     }
     _title = title;
+}
+
+- (void)setUndo:(NSUndoManager *)undo
+{
+    _undo = undo;
+    self.filters.undo = undo;
 }
 
 #pragma mark - Validation
@@ -309,6 +359,39 @@
     }
 }
 
+- (double)sanitizeQualityValue:(double)proposedQuality
+{
+    if (self.encoder & HB_ACODEC_PASS_FLAG)
+    {
+        return HB_INVALID_AUDIO_QUALITY;
+    }
+    else if (proposedQuality == HB_INVALID_AUDIO_QUALITY) // switching from passthru
+    {
+        return hb_audio_quality_get_default(self.encoder);
+    }
+    else
+    {
+        return hb_audio_quality_get_best(self.encoder, proposedQuality);
+    }
+}
+
+- (HBAudioEncoderMode)sanitizeModeValue:(HBAudioEncoderMode)encoderMode
+{
+   if (self.encoder & HB_ACODEC_PASS_FLAG)
+   {
+       return encoderMode;
+   }
+   else if (encoderMode == HBAudioEncoderModeQuality &&
+            hb_audio_quality_get_default(self.encoder) == HB_INVALID_AUDIO_QUALITY)
+   {
+        return HBAudioEncoderModeABR;
+   }
+   else
+   {
+       return encoderMode;
+   }
+}
+
 - (NSString *)sanitizeTrackNameValue:(NSString *)proposedTrackName
 {
     if ([proposedTrackName isEqualToString:@"Mono"]   ||
@@ -320,6 +403,14 @@
     }
 
     return proposedTrackName;
+}
+
+- (void)sanitizeFilters:(int)encoder
+{
+    if (encoder & HB_ACODEC_PASS_FLAG)
+    {
+        [self.filters removeAll];
+    }
 }
 
 #pragma mark - Options
@@ -395,7 +486,7 @@
     return sampleRates;
 }
 
-- (NSArray<NSString *> *)bitRates
+- (NSArray<NSNumber *> *)bitRates
 {
     int minBitRate = 0;
     int maxBitRate = 0;
@@ -405,17 +496,52 @@
 
     hb_audio_bitrate_get_limits(self.encoder, sampleRate, self.mixdown, &minBitRate, &maxBitRate);
 
-    NSMutableArray<NSString *> *bitRates = [[NSMutableArray alloc] init];
-    for (const hb_rate_t *audio_bitrate = hb_audio_bitrate_get_next(NULL);
-         audio_bitrate != NULL;
-         audio_bitrate  = hb_audio_bitrate_get_next(audio_bitrate))
+    NSMutableArray<NSNumber *> *bitRates = [[NSMutableArray alloc] init];
+
+    if (sourceTrack.index > -1 && (self.encoder & HB_ACODEC_PASS_FLAG) == NO)
     {
-        if (audio_bitrate->rate >= minBitRate && audio_bitrate->rate <= maxBitRate)
+        for (const hb_rate_t *audio_bitrate = hb_audio_bitrate_get_next(NULL);
+             audio_bitrate != NULL;
+             audio_bitrate  = hb_audio_bitrate_get_next(audio_bitrate))
         {
-            [bitRates addObject:@(audio_bitrate->name)];
+            if (audio_bitrate->rate >= minBitRate && audio_bitrate->rate <= maxBitRate)
+            {
+                [bitRates addObject:@(audio_bitrate->rate)];
+            }
         }
     }
     return bitRates;
+}
+
+- (NSArray<NSNumber *> *)qualities
+{
+    float low = 0;
+    float high = 0;
+    float granularity = 0;
+    int direction = 0;
+
+    hb_audio_quality_get_limits(self.encoder, &low, &high, &granularity, &direction);
+
+    NSMutableArray<NSNumber *> *qualities = [[NSMutableArray alloc] init];
+
+    if (low != HB_INVALID_AUDIO_QUALITY)
+    {
+        float quality = low;
+        while (quality <= high)
+        {
+            if (direction)
+            {
+                [qualities insertObject:@(quality) atIndex:0];
+            }
+            else
+            {
+                [qualities addObject:@(quality)];
+            }
+            quality += granularity;
+        }
+    }
+
+    return qualities;
 }
 
 #pragma mark - KVO UI Additions
@@ -513,6 +639,11 @@
     {
         retval = [NSSet setWithObjects:@"encoder", @"mixdown", @"sampleRate", nil];
     }
+    else if ([key isEqualToString:@"qualities"] ||
+             [key isEqualToString:@"mode"])
+    {
+        retval = [NSSet setWithObjects:@"encoder", nil];
+    }
     else if ([key isEqualToString:@"encoders"])
     {
         retval = [NSSet setWithObjects:@"container", @"sourceTrackIdx", nil];
@@ -548,9 +679,12 @@
         copy->_mixdown = _mixdown;
         copy->_sampleRate = _sampleRate;
         copy->_bitRate = _bitRate;
+        copy->_quality = _quality;
+        copy->_mode = _mode;
 
         copy->_gain = _gain;
         copy->_drc = _drc;
+        copy->_filters = [_filters copy];
 
         copy->_title = [_title copy];
     }
@@ -567,7 +701,7 @@
 
 - (void)encodeWithCoder:(NSCoder *)coder
 {
-    [coder encodeInt:4 forKey:@"HBAudioTrackVersion"];
+    [coder encodeInt:5 forKey:@"HBAudioTrackVersion"];
 
     encodeInteger(_sourceTrackIdx);
     encodeInt(_container);
@@ -576,9 +710,12 @@
     encodeInt(_mixdown);
     encodeInt(_sampleRate);
     encodeInt(_bitRate);
+    encodeDouble(_quality);
+    encodeInteger(_mode);
 
     encodeDouble(_gain);
     encodeDouble(_drc);
+    encodeObject(_filters);
 
     encodeObject(_title);
 }
@@ -594,9 +731,16 @@
     decodeInt(_mixdown); if (_mixdown < 0) { goto fail; }
     decodeInt(_sampleRate); if (_sampleRate < 0) { goto fail; }
     decodeInt(_bitRate); if (_bitRate < -1) { goto fail; }
+    decodeDouble(_quality);
+    decodeInteger(_mode); if (_mode < HBAudioEncoderModeABR || _mode > HBAudioEncoderModeQuality) { goto fail; }
 
     decodeDouble(_gain);
     decodeDouble(_drc);
+    decodeObject(_filters, HBAudioFilters);
+    if (_filters == nil)
+    {
+        _filters = [[HBAudioFilters alloc] init];
+    }
 
     decodeObject(_title, NSString);
 
