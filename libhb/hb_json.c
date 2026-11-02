@@ -1192,10 +1192,65 @@ void hb_json_job_scan( hb_handle_t * h, const char * json_job )
 
     // If the job wants to use Hardware decode, it must also be
     // enabled during scan.  So enable it here.
-    hb_list_t *file_paths = hb_list_init();
-    hb_list_add(file_paths, (char *)path);
-    hb_scan(h, file_paths, title_index, -1, 0, 0, 0, 0, 0, NULL, hw_decode, keep_duplicate_titles);
-    hb_list_close(&file_paths);
+    hb_value_array_t *join_inputs = hb_dict_get(hb_dict_get(dict, "Source"),
+                                                "JoinInputs");
+    if (join_inputs != NULL &&
+        hb_value_type(join_inputs) == HB_VALUE_TYPE_ARRAY &&
+        hb_value_array_len(join_inputs) > 0)
+    {
+        // Join jobs reference a composite title that only exists after a
+        // hb_scan_join().  Scanning plain Source.Path here would replace
+        // the composite with a single-input title and invalidate the job's
+        // chapter/range settings when the job is expanded.  Rebuild the
+        // composite from the job's join inputs instead.
+        int preview_count = 10; // match hb_scan()'s default for -1
+        hb_list_t *inputs = hb_list_init();
+        int         count = hb_value_array_len(join_inputs);
+        for (int ii = 0; ii < count; ii++)
+        {
+            hb_dict_t       *input_dict = hb_value_array_get(join_inputs, ii);
+            hb_join_input_t *input = calloc(1, sizeof(hb_join_input_t));
+            const char      *input_path = hb_value_get_string(
+                                    hb_dict_get(input_dict, "Path"));
+
+            input->path = strdup(input_path != NULL ? input_path : "");
+            input->title_id = hb_dict_get_int(input_dict, "Title");
+            hb_value_t *ranges = hb_dict_get(input_dict, "Ranges");
+            if (ranges != NULL &&
+                hb_value_type(ranges) == HB_VALUE_TYPE_ARRAY &&
+                hb_value_array_len(ranges) > 0)
+            {
+                int range_count = hb_value_array_len(ranges);
+                input->ranges = calloc(2 * range_count, sizeof(int64_t));
+                for (int rr = 0; rr < range_count; rr++)
+                {
+                    hb_dict_t *range_dict = hb_value_array_get(ranges, rr);
+                    input->ranges[2 * rr] = hb_dict_get_int(range_dict,
+                                                            "Start");
+                    input->ranges[2 * rr + 1] = hb_dict_get_int(range_dict,
+                                                                "Stop");
+                }
+                input->range_count = range_count;
+            }
+            hb_list_add(inputs, input);
+        }
+        hb_scan_join(h, inputs, preview_count, 0, 0, hw_decode);
+        hb_join_input_t *input;
+        while ((input = hb_list_item(inputs, 0)) != NULL)
+        {
+            hb_list_rem(inputs, input);
+            hb_join_input_close(&input);
+        }
+        hb_list_close(&inputs);
+    }
+    else
+    {
+        hb_list_t *file_paths = hb_list_init();
+        hb_list_add(file_paths, (char *)path);
+        hb_scan(h, file_paths, title_index, -1, 0, 0, 0, 0, 0, NULL,
+                hw_decode, keep_duplicate_titles);
+        hb_list_close(&file_paths);
+    }
 
     // Wait for scan to complete
     hb_state_t state;

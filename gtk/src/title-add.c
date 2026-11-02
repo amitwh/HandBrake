@@ -203,6 +203,25 @@ void ghb_finalize_job (GhbValue *settings)
     hb_preset_apply_video(preset, job);
     hb_preset_apply_filters(preset, job);
 
+    // hb_preset_apply_video resets Video.Encoder to the preset encoder,
+    // which would silently turn a lossless join into a full re-encode.
+    // Restore the join-copy encoder for eligible join jobs.
+    GhbValue *source_dict = ghb_dict_get(job, "Source");
+    if (source_dict != NULL && ghb_dict_get(source_dict, "JoinInputs") != NULL)
+    {
+        int join_copy = ghb_dict_get_int(source_dict, "JoinCopy");
+        int titleindex;
+        int title_id = ghb_dict_get_int(settings, "title");
+        const hb_title_t *title = ghb_lookup_title(title_id, &titleindex);
+
+        if (join_copy != HB_JOIN_COPY_OFF &&
+            title != NULL && title->join_eligible)
+        {
+            ghb_dict_set_string(ghb_dict_get(job, "Video"),
+                                "Encoder", "join-copy");
+        }
+    }
+
     ghb_value_free(&preset);
 }
 

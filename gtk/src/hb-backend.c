@@ -3772,7 +3772,11 @@ ghb_backend_job_apply_join(GhbValue *job_dict, const hb_title_t *title)
     for (int i = 0; i < join_scan_count; i++)
     {
         GhbValue *input_dict = ghb_dict_new();
-        ghb_dict_set(input_dict, "Path", ghb_string_value(join_scan_paths[i]));
+        // ghb_dict_set takes ownership (json_object_set_new), so never pass
+        // it a borrowed value like the ghb_string_value() static singleton:
+        // freeing the Job dict would delete the singleton and leave every
+        // later ghb_string_value() caller writing to freed memory.
+        ghb_dict_set_string(input_dict, "Path", join_scan_paths[i]);
         ghb_dict_set_int(input_dict, "Title", 1);
         ghb_dict_set(input_dict, "Ranges", ghb_array_new());
         ghb_array_append(join_list, input_dict);
